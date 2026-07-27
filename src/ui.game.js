@@ -139,7 +139,11 @@ function screenPreseason() {
   const euro = G.euro[c.academy ? c.parent : c.id];
   screen(`${topbar(G)}${hud(G)}
   <div class="card">
-    <div class="tiny">Pretemporada</div>
+    <div class="row between" style="gap:8px">
+      <div class="tiny">Pretemporada</div>
+      <div class="imp" style="color:var(--acc)">${esc(careerStage(p.age).name)} · ${p.age} años</div>
+    </div>
+    <div class="small dim2" style="margin:4px 0 8px">${esc(careerStage(p.age).desc)}</div>
     <h3 style="margin:3px 0 8px">Objetivos del club</h3>
     <div class="col" style="gap:8px">
       ${G.objectives.map((o) => `<div class="sub row between"><span class="small">${esc(o.text)}</span>${chip('+' + o.reward + ' PE', '')}</div>`).join('')}
@@ -157,6 +161,7 @@ function screenPreseason() {
     <div class="col mt">
       ${PRESEASON.map((o, i) => `<button class="opt" data-act="preOpt" data-i="${i}">
         <div class="t">${o.l}</div><div class="d">${o.d}</div>
+        <div class="meta">${effectChips(o)}</div>
       </button>`).join('')}
     </div>
   </div>`);
@@ -201,14 +206,20 @@ ACTIONS.preOpt = (d) => {
 
 function screenEvent(ev) {
   const G = window.G;
+  const imp = eventImportance(ev);
+  const I = IMPORTANCE[imp];
   screen(`${topbar(G)}${hud(G, true)}
-  <div class="card">
-    <div class="tiny">${ev.cat}</div>
-    <h3 style="margin:4px 0 10px;font-size:20px">${esc(ev.title)}</h3>
+  <div class="card ${I.cls}">
+    <div class="row between" style="gap:8px">
+      <div class="tiny">${ev.cat}</div>
+      <div class="imp" style="color:${I.color}">${imp === 3 ? '⚠ ' : imp === 2 ? '● ' : ''}${I.name}</div>
+    </div>
+    <h3 style="margin:6px 0 10px;font-size:20px">${esc(ev.title)}</h3>
     <p class="dim">${esc(typeof ev.text === 'function' ? ev.text(G) : ev.text)}</p>
     <div class="col mt">
-      ${ev.opts.map((o, i) => `<button class="opt" data-act="evOpt" data-i="${i}">
+      ${ev.opts.map((o, i) => `<button class="opt ${optionImportance(o) === 3 ? 'crucial' : ''}" data-act="evOpt" data-i="${i}">
         <div class="t">${esc(o.l)}</div>${o.d ? `<div class="d">${esc(o.d)}</div>` : ''}
+        <div class="meta">${effectChips(o)}</div>
       </button>`).join('')}
     </div>
   </div>`);
@@ -236,7 +247,8 @@ function screenMoment(m) {
   const G = window.G;
   screen(`${topbar(G)}${hud(G, true)}
   <div class="card moment">
-    <div class="hdr"><span class="pulse"></span><span class="tiny" style="color:var(--acc)">Momento clave</span></div>
+    <div class="hdr"><span class="pulse"></span><span class="tiny" style="color:var(--acc)">Momento clave</span>
+      ${m.clutch ? `<span class="imp grow" style="color:var(--red);justify-content:flex-end">⚠ Aquí se decide todo</span>` : ''}</div>
     <h3 style="margin:2px 0 10px;font-size:20px">${esc(m.title)}</h3>
     <p class="dim">${esc(typeof m.text === 'function' ? m.text(G) : m.text)}</p>
     <div class="col mt">
@@ -284,8 +296,9 @@ function screenStory(arcId) {
     <div class="tiny" style="color:var(--purple)">Trama · ${esc(arc.title)}</div>
     <p style="font-size:16px;margin:10px 0 14px">${esc(typeof stage.text === 'function' ? stage.text(G, st.data) : stage.text)}</p>
     <div class="col">
-      ${stage.opts.map((o, i) => `<button class="opt" data-act="stOpt" data-i="${i}">
+      ${stage.opts.map((o, i) => `<button class="opt ${optionImportance(o) === 3 ? 'crucial' : ''}" data-act="stOpt" data-i="${i}">
         <div class="t">${esc(o.l)}</div>${o.d ? `<div class="d">${esc(o.d)}</div>` : ''}
+        <div class="meta">${effectChips(o)}</div>
       </button>`).join('')}
     </div>
   </div>`);
@@ -389,6 +402,12 @@ function screenReport() {
   const isGKp = p.pos === 'GK';
   const feed = [];
 
+  if (rep.winter) {
+    const w = rep.winter;
+    feed.push({ icon: '🛫', cls: 'gold', text:
+      `<b>Fichaje de invierno.</b> Media temporada en el ${esc(w.from.name)} (${w.a.apps} pj, ${w.a.goals} g) `
+      + `y media en el ${esc(w.to.name)} (${w.b.apps} pj, ${w.b.goals} g).` });
+  }
   rep.injuries.forEach((i) => feed.push({ icon: '🚑', cls: 'bad', text: `<b>${esc(i.name)}</b> — ${i.weeks} semanas de baja.` }));
   if (s.mins < 500 && s.apps < 12) feed.push({ icon: '🪑', cls: 'bad', text: 'Un año para olvidar: apenas has jugado.' });
   rep.titles.forEach((t) => feed.push({ icon: t.icon, cls: 'gold', text: `<b>¡${esc(t.name.toUpperCase())}!</b>` }));
@@ -557,19 +576,23 @@ function screenMarket() {
   const G = window.G, p = G.player;
   const m = G.market;
   const forcedOut = !m.clubWants;
+  const stature = Math.round(m.stature || p.ovr);
   screen(`${topbar(G)}
-  <div class="card">
+  <div class="card ${m.binding ? 'imp-3' : ''}">
     <div class="tiny">Verano de ${G.seasonStart + 1}</div>
-    <h2 style="margin:4px 0 6px">¿Y ahora qué?</h2>
-    <p class="dim small">${forcedOut
-      ? `${esc(clubRef(G.club).replace(/^el /, 'El ').replace(/^la /, 'La '))} no cuenta contigo. Toca buscar equipo.`
-      : 'Tu carrera está en tus manos. Elige bien: la media, los minutos y los títulos dependen de esto.'}</p>
+    <h2 style="margin:4px 0 6px">${m.binding ? 'Tenías un acuerdo' : '¿Y ahora qué?'}</h2>
+    <p class="dim small">${m.binding
+      ? 'Te comprometiste a mitad de temporada. Ahora toca cumplir: no hay otra opción sobre la mesa.'
+      : forcedOut
+        ? `${esc(clubRef(G.club).replace(/^el /, 'El ').replace(/^la /, 'La '))} no cuenta contigo. Toca buscar equipo.`
+        : 'Tu carrera está en tus manos. Elige bien: la media, los minutos y los títulos dependen de esto.'}</p>
     <div class="row wrap mt-s" style="gap:6px">
       ${chip('Media ' + p.ovr, ovrTier(p.ovr) ? 'on' : '')}
+      ${chip('Cartel ' + stature, stature > p.ovr + 3 ? 'on' : stature < p.ovr - 3 ? 'bad' : '')}
       ${chip(p.age + 1 + ' años', '')}
       ${chip('Valor ' + fmtM(p.value), '')}
-      ${chip('Fama ' + Math.round(p.rep), p.rep > 60 ? 'on' : '')}
     </div>
+    ${stature > p.ovr + 3 ? `<div class="small acc mt-s">Tu temporada te ha puesto por encima de tu media: hay clubes mirándote que antes ni preguntaban.</div>` : ''}
   </div>
   <div class="card">
     <div class="col">
@@ -600,6 +623,7 @@ function marketCard(G, o, i) {
         <div class="d" style="margin-top:5px">${esc(o.desc)}</div>
         <div class="meta">
           ${chip(role.name, role.min >= 0.68 ? 'on' : role.min >= 0.4 ? 'warn' : 'bad')}
+          ${o.stepUp != null && Math.abs(o.stepUp) >= 2 ? chip((o.stepUp > 0 ? '▲ Salto de nivel +' : '▼ Bajas ') + Math.abs(Math.round(o.stepUp)), o.stepUp > 0 ? 'on' : 'bad') : ''}
           ${o.wage != null ? chip('💰 ' + fmtWage(o.wage), '') : ''}
           ${o.years ? chip(o.years + ' años', '') : ''}
           ${euro ? chip('🌍 ' + contCompName(c.confed, euro), 'on') : ''}

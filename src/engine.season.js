@@ -86,6 +86,70 @@ function rollInjuries(p, mods) {
   return out;
 }
 
+/* ---------- Una etapa de la temporada en un club concreto ----------
+   Se separa del resto para poder partir el año en dos cuando hay fichaje de
+   invierno: media temporada en cada equipo, con sus minutos y sus números. */
+function playSpell(G, club, fx, availFrac, share, portion) {
+  const p = G.player;
+  const mods = G.mods;
+  const lg = LEAGUES[leagueOfClub(G, club)];
+  const availableMatches = Math.round(fx.total * availFrac * portion);
+  let apps = Math.round(availableMatches * clamp(share * 1.04, 0, 0.98));
+  apps = clamp(apps, 0, availableMatches);
+  const minsPerApp = clamp(28 + share * 60 + rf(-4, 4), 15, 90);
+  const mins = Math.round(apps * minsPerApp);
+  const nineties = mins / 90;
+
+  const posDef = POS_BY_KEY[p.pos];
+  const ovrScale = Math.pow(clamp(p.ovr, 40, 99) / 75, 2.6);
+  const teamAtk = Math.pow(clamp(club.str, 40, 95) / 72, 1.15);
+  const leagueAdj = Math.pow(78 / clamp(lg ? lg.rep : 70, 45, 100), 0.34);
+  let gMul = 1, aMul = 1;
+  if (p.traits.includes('freekick')) gMul *= 1.15;
+  if (p.traits.includes('poacher')) { gMul *= 1.18; aMul *= 0.9; }
+  if (p.traits.includes('wizard')) aMul *= 1.2;
+  gMul *= (mods.goals || 1); aMul *= (mods.assists || 1);
+
+  const st = { apps, mins, goals: 0, assists: 0, motm: 0, yellow: 0, red: 0, cs: 0, saves: 0, conceded: 0, rating: 0 };
+
+  if (p.pos === 'GK') {
+    const defQ = Math.pow(clamp(club.str, 40, 95) / 72, 1.5) * Math.pow(p.ovr / 75, 0.55);
+    let concPer90 = clamp(1.42 / defQ * leagueAdj, 0.28, 3.2);
+    if (p.traits.includes('wall')) concPer90 *= 0.9;
+    st.conceded = poisson(concPer90 * nineties);
+    st.saves = poisson(clamp(2.4 + (1.6 - concPer90) * -1.1 + rf(-.3, .5), 1.2, 5.4) * nineties);
+    const csP = Math.exp(-concPer90 * (minsPerApp / 90));
+    for (let i = 0; i < apps; i++) if (chance(csP)) st.cs++;
+    st.assists = poisson(0.02 * nineties * (p.traits.includes('sweeper') ? 3 : 1));
+    st.goals = chance(0.012 * nineties) ? 1 : 0;
+  } else {
+    st.goals = poisson(posDef.g * ovrScale * teamAtk * leagueAdj * gMul * nineties) + Math.round((mods.extraGoals || 0) * portion);
+    st.assists = poisson(posDef.a * ovrScale * Math.pow(teamAtk, 0.7) * leagueAdj * aMul * nineties);
+  }
+  st.goals = Math.max(0, st.goals);
+  const cardBase = (p.pos === 'CB' || p.pos === 'DM' ? 0.22 : p.pos === 'GK' ? 0.04 : 0.13);
+  st.yellow = poisson(cardBase * nineties * (p.traits.includes('hothead') ? 1.9 : 1));
+  st.red = chance(clamp(nineties * 0.006 * (p.traits.includes('hothead') ? 3 : 1), 0, 0.5)) ? 1 : 0;
+
+  let rating = 6.35 + (p.ovr - club.str) * 0.028 + (mods.rating || 0);
+  if (p.pos === 'GK') rating += (st.cs / Math.max(1, apps)) * 1.5 - (st.conceded / Math.max(1, nineties)) * 0.28;
+  else rating += ((st.goals + st.assists * 0.75) / Math.max(1, nineties)) * 1.15;
+  rating += gauss(0, 0.16, -0.5, 0.5) + p.form / 400;
+  st.rating = clamp(rating, 5.1, 9.4);
+  st.motm = poisson(clamp(st.rating - 6.5, 0, 3) * apps * 0.075);
+  return st;
+}
+
+function mergeSpells(a, b) {
+  if (!b) return a;
+  const out = {};
+  ['apps', 'mins', 'goals', 'assists', 'motm', 'yellow', 'red', 'cs', 'saves', 'conceded']
+    .forEach((k) => { out[k] = (a[k] || 0) + (b[k] || 0); });
+  const wa = Math.max(1, a.apps), wb = Math.max(1, b.apps);
+  out.rating = Math.round(((a.rating * wa + b.rating * wb) / (wa + wb)) * 100) / 100;
+  return out;
+}
+
 /* ---------- Nucleo: simular la temporada del jugador ---------- */
 function simulateSeason(G) {
   const p = G.player;
@@ -110,96 +174,70 @@ function simulateSeason(G) {
 
   /* --- minutos --- */
   const role = squadRole(p, club, competitorGap(G));
-  let share = role.min;
-  share *= 1 + (p.form / 260) + ((p.morale - 60) / 500) + ((p.trust - 55) / 320);
-  share *= (mods.mins || 1);
-  if (p.traits.includes('engine')) share *= 1.06;
-  if (p.age >= 34) share *= 1 - (p.age - 33) * 0.06;
-  if (club.academy) share = clamp(share + 0.25, 0, 0.95);
-  share = clamp(share, 0.02, 0.97);
+  const shareOf = (cl, gap) => {
+    let sh = squadRole(p, cl, gap).min;
+    sh *= 1 + (p.form / 260) + ((p.morale - 60) / 500) + ((p.trust - 55) / 320);
+    sh *= (mods.mins || 1);
+    if (p.traits.includes('engine')) sh *= 1.06;
+    if (p.age >= 34) sh *= 1 - (p.age - 33) * 0.06;
+    if (cl.academy) sh = clamp(sh + 0.25, 0, 0.95);
+    return clamp(sh, 0.02, 0.97);
+  };
 
-  const availableMatches = Math.round(fx.total * availFrac);
-  let apps = Math.round(availableMatches * clamp(share * 1.04, 0, 0.98));
-  apps = clamp(apps, 0, availableMatches);
-  const minsPerApp = clamp(28 + share * 60 + rf(-4, 4), 15, 90);
-  const mins = Math.round(apps * minsPerApp);
-  const nineties = mins / 90;
-
-  /* --- produccion --- */
-  const posDef = POS_BY_KEY[p.pos];
-  const ovrScale = Math.pow(clamp(p.ovr, 40, 99) / 75, 2.6);
-  const teamAtk = Math.pow(clamp(club.str, 40, 95) / 72, 1.15);
-  const leagueAdj = Math.pow(78 / clamp(lg ? lg.rep : 70, 45, 100), 0.34);
-  let gMul = 1, aMul = 1;
-  if (p.traits.includes('freekick')) gMul *= 1.15;
-  if (p.traits.includes('poacher')) { gMul *= 1.18; aMul *= 0.9; }
-  if (p.traits.includes('wizard')) aMul *= 1.2;
-  gMul *= (mods.goals || 1); aMul *= (mods.assists || 1);
-
-  const stats = { apps, mins, goals: 0, assists: 0, motm: 0, yellow: 0, red: 0, cs: 0, saves: 0, conceded: 0, rating: 0 };
-
-  if (p.pos === 'GK') {
-    const defQ = Math.pow(clamp(club.str, 40, 95) / 72, 1.5) * Math.pow(p.ovr / 75, 0.55);
-    let concPer90 = clamp(1.42 / defQ * leagueAdj, 0.28, 3.2);
-    if (p.traits.includes('wall')) concPer90 *= 0.9;
-    stats.conceded = poisson(concPer90 * nineties);
-    stats.saves = poisson(clamp(2.4 + (1.6 - concPer90) * -1.1 + rf(-.3, .5), 1.2, 5.4) * nineties);
-    // porterias a cero: aproximacion de Poisson(0) por partido
-    const csP = Math.exp(-concPer90 * (minsPerApp / 90));
-    stats.cs = 0;
-    for (let i = 0; i < apps; i++) if (chance(csP)) stats.cs++;
-    stats.assists = poisson(0.02 * nineties * (p.traits.includes('sweeper') ? 3 : 1));
-    stats.goals = chance(0.012 * nineties) ? 1 : 0;
+  /* --- ¿hubo fichaje en enero? --- */
+  const winter = G.winterMove ? getClub(G.winterMove.clubId) : null;
+  let stats, spellA, spellB;
+  if (winter) {
+    // Media temporada en cada club. El equipo nuevo te conoce menos: arrancas
+    // con menos crédito, pero si eres mejor que ellos, juegas.
+    spellA = playSpell(G, club, fx, availFrac, shareOf(club, competitorGap(G)), 0.45);
+    const fxB = seasonFixtures(G, winter, (G.euro || {})[winter.id] || null);
+    spellB = playSpell(G, winter, fxB, availFrac, shareOf(winter, null) * 0.92, 0.55);
+    stats = mergeSpells(spellA, spellB);
+    rep.winter = { from: club, to: winter, a: spellA, b: spellB };
   } else {
-    stats.goals = poisson(posDef.g * ovrScale * teamAtk * leagueAdj * gMul * nineties) + (mods.extraGoals || 0);
-    stats.assists = poisson(posDef.a * ovrScale * Math.pow(teamAtk, 0.7) * leagueAdj * aMul * nineties);
+    stats = playSpell(G, club, fx, availFrac, shareOf(club, competitorGap(G)), 1);
   }
-  stats.goals = Math.max(0, stats.goals);
-  const cardBase = (p.pos === 'CB' || p.pos === 'DM' ? 0.22 : p.pos === 'GK' ? 0.04 : 0.13);
-  stats.yellow = poisson(cardBase * nineties * (p.traits.includes('hothead') ? 1.9 : 1));
-  stats.red = chance(clamp(nineties * 0.006 * (p.traits.includes('hothead') ? 3 : 1), 0, 0.5)) ? 1 : 0;
+  const mins = stats.mins;
+  const apps = stats.apps;
 
-  /* --- nota media --- */
-  let rating = 6.35 + (p.ovr - club.str) * 0.028 + (mods.rating || 0);
-  if (p.pos === 'GK') rating += (stats.cs / Math.max(1, apps)) * 1.5 - (stats.conceded / Math.max(1, nineties)) * 0.28;
-  else rating += ((stats.goals + stats.assists * 0.75) / Math.max(1, nineties)) * 1.15;
-  rating += gauss(0, 0.16, -0.5, 0.5) + p.form / 400;
-  rating = clamp(rating, 5.1, 9.4);
-  stats.rating = Math.round(rating * 100) / 100;
-  stats.motm = poisson(clamp((rating - 6.5), 0, 3) * apps * 0.075);
-
-  /* --- clasificacion y titulos --- */
-  const boost = { clubId: club.academy ? club.parent : club.id, pts: playerImpactPoints(p, club, stats) };
-  const table = simulateTable(G, lk, club.academy ? null : boost);
-  const myRow = table.find((r) => r.club.id === (club.academy ? club.parent : club.id));
+  /* --- clasificacion y titulos ---
+     Si te fuiste en enero, lo que cuenta es el equipo donde acabas la temporada:
+     los títulos se levantan con la camiseta que llevas en mayo. */
+  const endClub = winter || club;
+  const endLk = leagueOfClub(G, endClub);
+  const endLg = LEAGUES[endLk];
+  const boost = { clubId: endClub.academy ? endClub.parent : endClub.id, pts: playerImpactPoints(p, endClub, winter ? spellB : stats) };
+  const table = simulateTable(G, endLk, endClub.academy ? null : boost);
+  const myRow = table.find((r) => r.club.id === (endClub.academy ? endClub.parent : endClub.id));
   const pos = myRow ? myRow.pos : Math.ceil(table.length / 2);
   rep.table = table; rep.leaguePos = pos;
 
   const played = mins > 400; // hay que haber jugado para "ganar" un titulo de verdad
   const titles = [];
-  if (lg) {
-    if (pos === 1) titles.push({ name: lg.tier === 1 ? lg.name : lg.name + ' (ascenso)', icon: '🏆', tier: lg.tier === 1 ? 3 : 2 });
-    else if (lg.tier === 2 && pos === 2) titles.push({ name: 'Ascenso directo a ' + (LEAGUES[lg.up] ? LEAGUES[lg.up].name : 'Primera'), icon: '⬆️', tier: 2 });
-    else if (lg.tier === 2 && pos >= 3 && pos <= 6 && chance(0.28)) titles.push({ name: 'Ascenso por playoff', icon: '⬆️', tier: 2 });
+  if (endLg) {
+    if (pos === 1) titles.push({ name: endLg.tier === 1 ? endLg.name : endLg.name + ' (ascenso)', icon: '🏆', tier: endLg.tier === 1 ? 3 : 2 });
+    else if (endLg.tier === 2 && pos === 2) titles.push({ name: 'Ascenso directo a ' + (LEAGUES[endLg.up] ? LEAGUES[endLg.up].name : 'Primera'), icon: '⬆️', tier: 2 });
+    else if (endLg.tier === 2 && pos >= 3 && pos <= 6 && chance(0.28)) titles.push({ name: 'Ascenso por playoff', icon: '⬆️', tier: 2 });
   }
   // Copa nacional (el filial no la juega)
-  if (lg && lg.cup && !club.academy) {
-    const pool = CLUBS.filter((c) => c.country === lg.country && LEAGUES[leagueOfClub(G, c)]);
+  if (endLg && endLg.cup && !endClub.academy) {
+    const pool = CLUBS.filter((c) => c.country === endLg.country && LEAGUES[leagueOfClub(G, c)]);
     const cupWinner = pickW(pool, (c) => Math.pow(Math.max(1, c.str - 42), 3.1) * (1 + c.prestige / 160));
-    const me = club.academy ? getClub(club.parent) : club;
-    if (cupWinner && cupWinner.id === me.id) titles.push({ name: lg.cup, icon: '🥇', tier: 2 });
+    const me = endClub.academy ? getClub(endClub.parent) : endClub;
+    if (cupWinner && cupWinner.id === me.id) titles.push({ name: endLg.cup, icon: '🥇', tier: 2 });
     else rep.cupRound = roundPhrase(rnd() * (1.05 - clamp(me.str - 55, 0, 35) / 55), false);
   }
   // Supercopa
-  if (lg && lg.supercup && chance(0.16 + clamp((club.prestige - 70) / 130, 0, 0.3))) {
-    if (club.prestige > 70 && chance(0.5)) titles.push({ name: lg.supercup, icon: '🛡️', tier: 1 });
+  if (endLg && endLg.supercup && chance(0.16 + clamp((endClub.prestige - 70) / 130, 0, 0.3))) {
+    if (endClub.prestige > 70 && chance(0.5)) titles.push({ name: endLg.supercup, icon: '🛡️', tier: 1 });
   }
   // Continental (el filial no la juega)
   if (euroTier && !club.academy) {
-    const contName = contCompName(club.confed, euroTier);
+    const contName = contCompName(endClub.confed, euroTier);
     const poolIds = (G.euroPool && G.euroPool[euroTier]) || [];
     const pool = poolIds.map(getClub).filter(Boolean);
-    const me = club.academy ? getClub(club.parent) : club;
+    const me = endClub.academy ? getClub(endClub.parent) : endClub;
     if (pool.length) {
       const winner = pickW(pool, (c) => Math.pow(Math.max(1, c.str - 55), 3.4) * (1 + c.prestige / 130));
       if (winner && winner.id === me.id) titles.push({ name: contName, icon: euroTier === 'ucl' ? '🏆' : '🏅', tier: euroTier === 'ucl' ? 4 : 2 });
@@ -211,11 +249,11 @@ function simulateSeason(G) {
     }
   }
   // en la cantera no ganas los titulos del primer equipo
-  if (!played || club.academy) titles.length = 0;
-  if (club.academy) {
+  if (!played || endClub.academy) titles.length = 0;
+  if (endClub.academy) {
     rep.youthNote = pos <= 3
-      ? `El primer equipo del ${getClub(club.parent).name} pelea arriba, pero tú todavía lo ves desde el filial.`
-      : `Otro año de formación en la cantera del ${getClub(club.parent).name}.`;
+      ? `El primer equipo del ${getClub(endClub.parent).name} pelea arriba, pero tú todavía lo ves desde el filial.`
+      : `Otro año de formación en la cantera del ${getClub(endClub.parent).name}.`;
   }
   rep.titles = titles;
 
@@ -225,15 +263,28 @@ function simulateSeason(G) {
 
   /* --- descenso / ascenso del club --- */
   rep.relegated = false; rep.promoted = false;
-  if (lg && lg.tier === 1 && lg.down) {
-    const nRel = RELEGATION[lk] != null ? RELEGATION[lk] : 3;
+  if (endLg && endLg.tier === 1 && endLg.down) {
+    const nRel = RELEGATION[endLk] != null ? RELEGATION[endLk] : 3;
     if (nRel > 0 && pos > table.length - nRel) rep.relegated = true;
   }
-  if (lg && lg.tier === 2 && titles.some((t) => /[Aa]scenso/.test(t.name) || t.name === lg.name)) rep.promoted = true;
+  if (endLg && endLg.tier === 2 && titles.some((t) => /[Aa]scenso/.test(t.name) || t.name === endLg.name)) rep.promoted = true;
+
+  /* El traspaso de enero se hace efectivo: a partir de ahora este es tu club */
+  if (winter) {
+    G.club = winter;
+    p.contract = G.winterMove.years || ri(3, 4);
+    p.wage = G.winterMove.wage || p.wage;
+    p.seasonsAtClub = 0;
+    p.loanFrom = null; p.loanYears = 0;
+    p.trust = clamp(50 + rf(-5, 8), 30, 75);
+    p.fanLove = clamp(48 + rf(-6, 10), 25, 70);
+    G.winterMove = null;
+    G.squad = null; G.squadClubId = null;   // vestuario nuevo
+  }
 
   rep.stats = stats;
   rep.injuries = injuries;
-  rep.club = club; rep.league = lg; rep.euroTier = euroTier;
+  rep.club = endClub; rep.league = endLg; rep.euroTier = euroTier;
   rep.fixtures = fx;
   rep.role = role;
   return rep;

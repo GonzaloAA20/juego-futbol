@@ -269,6 +269,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 @keyframes rise { from { opacity: 0; transform: translateY(18px) scale(.97) } to { opacity: 1; transform: none } }
 
+/* ---------- Peso de la decisión ----------
+   Una decisión que te ata a un club durante años no puede parecerse a elegir
+   qué haces en el gimnasio. El borde y la etiqueta lo dicen antes de leer nada. */
+.imp {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px;
+  font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+}
+.card.imp-2 { border-color: #5b4a1a; box-shadow: 0 0 0 1px rgba(255,201,60,.14) inset, var(--shadow); }
+.card.imp-3 {
+  border-color: #7a2f34;
+  box-shadow: 0 0 0 1px rgba(255,93,93,.2) inset, 0 0 34px rgba(255,93,93,.1), var(--shadow);
+}
+.opt.crucial { border-color: #6d2b30; background: #1a1013; }
+.opt.crucial:hover { border-color: var(--red); background: #21141a; }
+
 /* ---------- Momento clave ---------- */
 .moment { background: linear-gradient(160deg, #1d2a13, #0b1219); border-color: #3b5a22; }
 .moment .hdr { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }

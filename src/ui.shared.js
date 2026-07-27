@@ -125,6 +125,68 @@ function freshMods() {
   return { goals: 1, assists: 1, mins: 1, growth: 1, injuryRisk: 1, rating: 0, extraGoals: 0 };
 }
 
+/* ---------- Peso de una decisión y sus consecuencias ----------
+   El problema no era la estética, era no saber qué te juegas al pulsar. Esto lo
+   deduce del propio efecto, así que ningún evento puede mentir sobre lo que hace. */
+const IMPORTANCE = {
+  1: { name: 'Decisión menor', cls: '', color: 'var(--dim2)' },
+  2: { name: 'Decisión importante', cls: 'imp-2', color: 'var(--gold)' },
+  3: { name: 'DECISIÓN CRUCIAL', cls: 'imp-3', color: 'var(--red)' },
+};
+function optionImportance(o) {
+  let n = 1;
+  if (o.tags && o.tags.some((t) => /compromete|cambias de club|ya\b/i.test(t))) n = 3;
+  const e = typeof o.e === 'function' ? null : o.e;
+  if (!e) return Math.max(n, 2);                       // hay azar de por medio
+  if (e.trait || e.lose) n = Math.max(n, 2);
+  const mag = Math.abs(e.morale || 0) + Math.abs(e.trust || 0) + Math.abs(e.fanLove || 0) + Math.abs(e.rep || 0);
+  if (mag >= 18) n = Math.max(n, 2);
+  if (mag >= 34) n = Math.max(n, 3);
+  ['mins', 'growth', 'injuryRisk', 'goals', 'assists'].forEach((k) => {
+    if (e[k] != null && Math.abs(e[k] - 1) >= 0.15) n = Math.max(n, 2);
+    if (e[k] != null && Math.abs(e[k] - 1) >= 0.35) n = Math.max(n, 3);
+  });
+  return n;
+}
+function eventImportance(ev) {
+  return (ev.opts || []).reduce((m, o) => Math.max(m, optionImportance(o)), 1);
+}
+
+/* Etiquetas legibles de lo que hace cada efecto */
+const FX_LABEL = {
+  growth: 'Crecimiento', mins: 'Minutos', goals: 'Goles', assists: 'Asistencias',
+  injuryRisk: 'Riesgo de lesión', morale: 'Moral', trust: 'Confianza del míster',
+  fanLove: 'Afición', rep: 'Fama', fitness: 'Estado físico', money: 'Dinero',
+  form: 'Racha', rating: 'Rendimiento', sp: 'Puntos de evolución', extraGoals: 'Gol asegurado',
+};
+const FX_MULT = ['growth', 'mins', 'goals', 'assists', 'injuryRisk'];
+function effectChips(o) {
+  if (o.tags && o.tags.length) {
+    return o.tags.map((t) => chip(t, /compromete|cambias/i.test(t) ? 'bad' : 'warn')).join('');
+  }
+  const e = typeof o.e === 'function' ? null : o.e;
+  if (!e) return chip('🎲 Puede salir bien o mal', 'warn');
+  const out = [];
+  const push = (label, up, good) => out.push(chip((up ? '▲ ' : '▼ ') + label, good ? 'on' : 'bad'));
+  FX_MULT.forEach((k) => {
+    if (e[k] == null || Math.abs(e[k] - 1) < 0.02) return;
+    const up = e[k] > 1;
+    push(FX_LABEL[k], up, k === 'injuryRisk' ? !up : up);
+  });
+  ['morale', 'trust', 'fanLove', 'rep', 'fitness', 'money', 'form', 'rating', 'sp', 'extraGoals'].forEach((k) => {
+    if (!e[k]) return;
+    if (Math.abs(e[k]) < (k === 'rating' ? 0.03 : k === 'money' ? 0.05 : 3)) return;
+    push(FX_LABEL[k], e[k] > 0, e[k] > 0);
+  });
+  if (e.trait && TRAITS[e.trait]) out.push(chip(TRAITS[e.trait].icon + ' ' + TRAITS[e.trait].name, TRAITS[e.trait].bad ? 'bad' : 'on'));
+  if (e.attr) {
+    const ups = Object.keys(e.attr).filter((k) => e.attr[k] > 0);
+    if (ups.length) out.push(chip('▲ ' + ups.map((k) => attrName(k)).join(', '), 'on'));
+  }
+  if (!out.length) out.push(chip('Sin efectos notables', ''));
+  return out.slice(0, 5).join('');
+}
+
 /* ---------- Feed ---------- */
 function feedItem(it) {
   return `<div class="ev ${it.cls || ''}"><div class="ic">${it.icon || '•'}</div><div class="grow">${it.text}</div></div>`;
@@ -143,6 +205,7 @@ function saveGame(G) {
       objectives: G.objectives, step: G.step, queue: serializeQueue(G.queue),
       seasonFeed: G.seasonFeed, history: G.player.history,
       squad: G.squad, squadClubId: G.squadClubId,
+      committedTo: G.committedTo, winterMove: G.winterMove, lastStature: G.lastStature,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
@@ -163,6 +226,7 @@ function loadGame() {
       step: d.step || 'season', queue: deserializeQueue(d.queue || []),
       seasonFeed: d.seasonFeed || [],
       squad: d.squad || null, squadClubId: d.squadClubId || null,
+      committedTo: d.committedTo || null, winterMove: d.winterMove || null, lastStature: d.lastStature || 0,
     };
     // sanear
     if (!G.club) return null;
