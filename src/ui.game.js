@@ -228,12 +228,28 @@ ACTIONS.evOpt = (d) => {
   const G = window.G;
   const b = G.queue[0];
   const o = b.ev.opts[+d.i];
+  // Una opción que te ata durante años no se pulsa sin querer
+  if (optionImportance(o) === 3 && !d.confirmed) return confirmCrucial(o, () => ACTIONS.evOpt({ ...d, confirmed: '1' }));
   const note = applyEffects(G, o.e);
   G.seasonFeed.push({ icon: '💬', cls: 'info', text: `<b>${esc(b.ev.title)}</b> — ${esc(o.l)}${note ? '. ' + esc(note) : '.'}` });
   G.queue.shift(); saveGame(G);
   if (note) resultCard(b.ev.title, note, () => renderStep());
   else renderStep();
 };
+
+function confirmCrucial(o, then) {
+  const w = modal(`<div class="imp" style="color:var(--red)">⚠ Decisión crucial</div>
+    <h3 style="margin:8px 0 8px">${esc(o.l)}</h3>
+    ${o.d ? `<p class="dim small">${esc(o.d)}</p>` : ''}
+    <div class="row wrap" style="gap:6px">${effectChips(o)}</div>
+    <p class="small dim2 mt">Esto va a marcar tu carrera. No hay vuelta atrás.</p>
+    <div class="col mt">
+      <button class="btn primary wide" data-act="crucialYes">Sí, adelante</button>
+      <button class="btn ghost wide" data-act="crucialNo">Mejor no</button>
+    </div>`, { sticky: true });
+  ACTIONS.crucialYes = () => { w.remove(); then(); };
+  ACTIONS.crucialNo = () => { w.remove(); };
+}
 
 function resultCard(title, text, then) {
   const w = modal(`<div class="tiny">${esc(title)}</div>
@@ -309,6 +325,7 @@ ACTIONS.stOpt = (d) => {
   const arc = STORY_BY_ID[b.arcId];
   const st = p.arcs[b.arcId];
   const o = arc.stages[st.stage].opts[+d.i];
+  if (optionImportance(o) === 3 && !d.confirmed) return confirmCrucial(o, () => ACTIONS.stOpt({ ...d, confirmed: '1' }));
   const note = applyEffects(G, o.e);
   if (o.score) st.data.score = (st.data.score || 0) + o.score;
   const next = o.next != null ? o.next : st.stage + 1;
@@ -388,6 +405,13 @@ function runSimulation() {
   G.lastTables = {};
   if (rep.league && rep.table) G.lastTables[leagueOfClub(G, rep.club)] = rep.table;
 
+  /* hitos, récords y destacados: hacen que la temporada se sienta como un capítulo */
+  rep.milestones = checkMilestones(G);
+  rep.broken = brokenRecords(G, rep);      // antes de actualizar, para saber qué se ha batido
+  rep.prev = p.history.filter((h) => h.rating != null).slice(-1)[0] || null;
+  updateRecords(G, rep);
+  rep.highlights = seasonHighlights(G, rep);
+
   G.lastReport = rep; G.lastNt = nt; G.lastAwards = awards;
   G.step = 'report';
   saveGame(G);
@@ -416,8 +440,11 @@ function screenReport() {
   if (rep.youthNote) feed.push({ icon: '🌱', cls: 'info', text: esc(rep.youthNote) });
   if (rep.relegated) feed.push({ icon: '⬇️', cls: 'bad', text: `El ${esc(rep.club.name)} desciende de categoría.` });
   if (rep.promoted) feed.push({ icon: '⬆️', cls: 'good', text: `¡El ${esc(rep.club.name)} sube de categoría!` });
+  (rep.broken || []).forEach((b) => feed.push({ icon: '📊', cls: 'gold', text: `<b>Récord personal:</b> ${esc(b)}` }));
+  (rep.highlights || []).forEach((h) => feed.push(h));
   nt.feed.forEach((f) => feed.push(f));
   awards.forEach((a) => feed.push({ icon: a.icon, cls: 'gold', text: `<b>${esc(a.name)}</b>` }));
+  (rep.milestones || []).forEach((m) => feed.push({ icon: m.icon, cls: 'gold', text: `<b>Hito:</b> ${esc(m.name)}` }));
 
   const tableRows = buildTableView(rep);
 
@@ -435,10 +462,10 @@ function screenReport() {
       </div>
     </div>
     <div class="stats mt">
-      ${stat(s.apps, 'Partidos')}
+      ${statD(s.apps, 'Partidos', rep.prev && s.apps - rep.prev.apps)}
       ${stat(Math.round(s.mins), 'Minutos')}
-      ${isGKp ? stat(s.cs, 'Portería 0') : stat(s.goals, 'Goles')}
-      ${isGKp ? stat(s.conceded, 'Encajados') : stat(s.assists, 'Asistencias')}
+      ${isGKp ? statD(s.cs, 'Portería 0', rep.prev && s.cs - rep.prev.cs) : statD(s.goals, 'Goles', rep.prev && s.goals - rep.prev.goals)}
+      ${isGKp ? stat(s.conceded, 'Encajados') : statD(s.assists, 'Asistencias', rep.prev && s.assists - rep.prev.assists)}
       ${isGKp ? stat(s.saves, 'Paradas') : stat(s.motm, 'MVP')}
       ${stat(s.yellow + (s.red ? '/' + s.red : ''), s.red ? 'Tarj. A/R' : 'Amarillas')}
     </div>
@@ -511,6 +538,10 @@ function screenDevelop() {
       </div>
     </div>
     <p class="small dim mt">${devNarrative(p, dev)}</p>
+    ${p.history.filter((h) => h.ovr != null).length >= 2 ? `<div class="sub mt-s" style="padding:8px 4px 2px">
+      <div class="tiny" style="padding-left:8px">Tu media, temporada a temporada</div>
+      ${ovrSparkline(p.history, 320, 78)}
+    </div>` : ''}
   </div>
 
   <div class="card">
@@ -676,12 +707,19 @@ function screenRetired() {
   const byTitle = {};
   p.trophies.forEach((t) => { byTitle[t.name] = (byTitle[t.name] || 0) + 1; });
 
+  const ch = G.challenge;
+  const chRes = ch ? challengeScore(G) : null;
+
   // guardar en la sala de leyendas (una sola vez)
   if (!p.savedToHall) {
     p.savedToHall = true;
     const meta = loadMeta();
     meta.careers = (meta.careers || 0) + 1;
     meta.best = Math.max(meta.best || 0, L);
+    if (ch && chRes) {
+      const prev = (meta.daily && meta.daily.key === ch.key) ? meta.daily.best : 0;
+      meta.daily = { key: ch.key, best: Math.max(prev, chRes.score), rank: legacyRank(chRes.score).t };
+    }
     meta.hall.unshift({
       name: displayName(p), country: p.country, pos: p.pos, peak: p.peakOvr,
       legacy: L, rank: rank.t, goals: c.goals, apps: c.apps, trophies: c.trophies,
@@ -693,6 +731,18 @@ function screenRetired() {
   }
 
   screen(`${brand()}
+  ${ch ? `<div class="card" style="border-color:#4a3f1a;background:linear-gradient(160deg,#1b1608,#0a1119)">
+    <div class="row between"><span class="tiny" style="color:var(--gold)">🎯 Reto del día</span>
+      <span class="small b ${chRes.goalDone ? 'acc' : 'red'}">${chRes.goalDone ? '✅ Objetivo cumplido' : '❌ Objetivo fallado'}</span></div>
+    <div class="small dim mt-s">${esc(ch.goal.name)}</div>
+    <div class="tc" style="margin:12px 0 6px">
+      <div style="font-size:38px;font-weight:900;letter-spacing:-1px" class="gold">${chRes.score}</div>
+      <div class="tiny">Puntos${chRes.goalDone ? ' · incluye el ×1,5 por cumplir el objetivo' : ''}</div>
+    </div>
+    <pre id="shareBox" style="white-space:pre-wrap;background:#0b131b;border:1px solid var(--line);border-radius:11px;
+      padding:11px;font:600 12.5px/1.5 var(--font);margin:10px 0 0">${esc(challengeShareText(G))}</pre>
+    <button class="btn primary wide mt-s" data-act="copyShare">📋 Copiar para mandarlo al grupo</button>
+  </div>` : ''}
   <div class="card tc" style="border-color:#4a3f1a;background:linear-gradient(180deg,#1c1708,#0a1119)">
     <div style="font-size:44px">${rank.icon}</div>
     <div class="tiny" style="letter-spacing:.14em">Fin de la carrera</div>
@@ -732,10 +782,36 @@ function screenRetired() {
       <span class="small"><b>${esc(a.icon)} ${esc(a.name)}</b></span><span class="small dim2">${esc(a.season)}</span>
     </div>`).join('')}</div></div>` : ''}
 
+  ${p.history.filter((h) => h.ovr != null).length >= 2 ? `<div class="card">
+    <div class="tiny">Tu media a lo largo de la carrera</div>
+    ${ovrSparkline(p.history, 340, 92)}
+  </div>` : ''}
+
+  ${p.records && Object.keys(p.records).length ? `<div class="card">
+    <div class="tiny">Récords personales</div>
+    <div class="col mt-s" style="gap:6px">
+      ${Object.keys(p.records).filter((k) => RECORD_LABELS[k]).map((k) => `<div class="sub row between">
+        <span class="small">${esc(RECORD_LABELS[k])}</span>
+        <span class="small"><b>${k === 'rating' ? p.records[k].v.toFixed(2) : p.records[k].v}</b>
+        <span class="dim2">· ${esc(p.records[k].season)}, ${esc(p.records[k].club)}</span></span>
+      </div>`).join('')}
+    </div>
+  </div>` : ''}
+
+  ${p.milestones && Object.keys(p.milestones).length ? `<div class="card">
+    <div class="tiny">Hitos alcanzados</div>
+    <div class="grid autowide mt-s">
+      ${MILESTONES.filter((m) => p.milestones[m.id]).map((m) => `<div class="trophy">
+        <span class="ic">${m.icon}</span><div><div class="n">${esc(m.name)}</div>
+        <div class="small dim2">${esc(p.milestones[m.id])}</div></div></div>`).join('')}
+    </div>
+  </div>` : ''}
+
   ${careerTable(p)}
 
   <div class="actionbar col" style="gap:8px">
     <button class="btn primary wide" data-act="newCareer">Empezar otra carrera</button>
+    ${ch ? '<button class="btn wide" data-act="dailyScreen">🎯 Volver a intentar el reto</button>' : ''}
     <button class="btn ghost wide" data-act="hall">🏛️ Sala de leyendas</button>
   </div>`);
 }
@@ -755,6 +831,24 @@ function careerTable(p) {
         <td class="num">${gk ? h.cs : h.goals}</td><td class="num">${gk ? (h.conceded || 0) : h.assists}</td>
         <td class="num">${h.rating.toFixed(2)}</td></tr>`).join('')}
       </tbody></table></div></div>`;
+}
+
+ACTIONS.copyShare = () => {
+  const box = document.getElementById('shareBox');
+  if (!box) return;
+  const txt = box.textContent;
+  const done = () => toast('Copiado. ¡A picarse!');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(done, () => fallbackCopy(txt, done));
+  } else fallbackCopy(txt, done);
+};
+function fallbackCopy(txt, done) {
+  // Sin permisos de portapapeles hay que hacerlo a la vieja usanza
+  const ta = document.createElement('textarea');
+  ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) { toast('Selecciona el texto y cópialo a mano'); }
+  ta.remove();
 }
 
 /* ---------- Sala de leyendas ---------- */

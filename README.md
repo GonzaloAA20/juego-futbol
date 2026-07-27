@@ -46,6 +46,8 @@ Si prefieres no hacer público el repositorio, la alternativa es mandar directam
 | **Momentos clave** | 27 escenas interactivas resueltas con tus atributos |
 | **Tramas** | 8 arcos narrativos que se desarrollan a lo largo de varias temporadas |
 | **Vestuario** | Plantilla con nombres que envejece, crece y ficha cada verano |
+| **Hitos** | 23 metas de carrera que dan legado al alcanzarlas |
+| **Modos** | Carrera libre y Reto del Día con semilla compartida |
 
 ### Cómo funciona la simulación
 
@@ -100,6 +102,34 @@ La edad ya no es solo un número: cada etapa (**Promesa**, **Irrupción**, **Con
 **Plenitud**, **Veteranía**, **Últimas balas**) trae sus propias situaciones, del primer sueldo
 y los estudios a la charla en la que te ofrecen ser suplente de lujo.
 
+## 🎯 Reto del Día
+
+Un modo aparte pensado para picarse con los amigos. Cada día, **todo el mundo que lo juega empieza
+exactamente igual**: mismo país, misma posición, mismo perfil, la misma condición especial y la misma
+semilla de azar. Lo único que cambia el resultado son las decisiones que tome cada uno.
+
+El reto trae además un objetivo concreto (ganar la Champions, llegar a 90 de media, marcar 200 goles…)
+que multiplica la puntuación por 1,5 si lo cumples. Al retirarte sale una tarjeta lista para copiar
+y pegar en el grupo:
+
+```
+⚽ El Camino · Reto 27/07
+🇸🇰 Mediapunta · media máxima 87
+❌ Ganar el Balón de Oro
+⚽ 84 goles · 🅰️ 81 asistencias · 554 partidos
+🏆 5 títulos · 🌐 162 internacionalidades
+⭐ ICONO — 1768 puntos
+```
+
+## Lo que engancha a volver a jugar
+
+- **Ventajas desbloqueables**: el legado que acumulas entre carreras desbloquea ventajas de inicio
+  (menos lesiones, superagente, más techo). Cada carrera terminada te hace más fuerte en la siguiente.
+- **Hitos**: 23 hitos de carrera que van cayendo (tu primer gol, 100 partidos, 88 de media, 500 goles).
+- **Récords personales** que se baten y se anuncian cuando los superas.
+- **Destacados de temporada** deducidos de tus números reales: hat-tricks, rachas de goles, paradones.
+- **Gráfica de tu media** temporada a temporada, con tu pico marcado.
+
 ### Qué evita que se haga repetitivo
 
 - **Momentos clave**: el penalti de la final, el minuto 89, la noche europea. Eliges qué haces y
@@ -152,6 +182,7 @@ src/
   engine.season.js      simulación de temporada, clasificaciones, lesiones, evolución
   engine.market.js      opciones de inicio, ofertas, contratos, cesiones
   engine.awards.js      premios individuales, Balón de Oro, selección, legado
+  engine.meta.js        hitos, récords, destacados, ventajas y Reto del Día
   ui.*.js / main.js     interfaz
 ```
 

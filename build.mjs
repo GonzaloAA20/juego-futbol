@@ -23,6 +23,7 @@ const SCRIPTS = [
   'engine.season.js',
   'engine.market.js',
   'engine.awards.js',
+  'engine.meta.js',
   'ui.shared.js',
   'ui.create.js',
   'ui.game.js',

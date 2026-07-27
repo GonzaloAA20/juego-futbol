@@ -43,6 +43,12 @@ ACTIONS.closeModal = () => closeModals();
 const bar = (v, max, cls) => `<div class="bar ${cls || ''}"><i style="width:${clamp((v / max) * 100, 0, 100)}%"></i></div>`;
 const chip = (t, cls) => `<span class="chip ${cls || ''}">${t}</span>`;
 const stat = (v, l) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`;
+/* Igual que stat, pero con la diferencia respecto a la temporada anterior */
+function statD(v, l, delta) {
+  const d = (delta == null || delta === 0 || isNaN(delta)) ? ''
+    : `<i style="font-style:normal;font-size:11px;font-weight:800;margin-left:4px;color:${delta > 0 ? 'var(--acc)' : 'var(--red)'}">${delta > 0 ? '+' : ''}${delta}</i>`;
+  return `<div class="stat"><b>${v}${d}</b><span>${l}</span></div>`;
+}
 
 function seasonLabel(G) { return `${G.seasonStart}/${String(G.seasonStart + 1).slice(2)}`; }
 
@@ -206,6 +212,7 @@ function saveGame(G) {
       seasonFeed: G.seasonFeed, history: G.player.history,
       squad: G.squad, squadClubId: G.squadClubId,
       committedTo: G.committedTo, winterMove: G.winterMove, lastStature: G.lastStature,
+      challengeKey: G.challenge ? G.challenge.key : null,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
@@ -227,6 +234,7 @@ function loadGame() {
       seasonFeed: d.seasonFeed || [],
       squad: d.squad || null, squadClubId: d.squadClubId || null,
       committedTo: d.committedTo || null, winterMove: d.winterMove || null, lastStature: d.lastStature || 0,
+      challenge: d.challengeKey ? dailyChallenge(d.challengeKey) : null,
     };
     // sanear
     if (!G.club) return null;
