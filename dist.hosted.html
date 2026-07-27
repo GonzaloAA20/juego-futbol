@@ -4811,6 +4811,265 @@ function legacyRank(L) {
 }
 
 
+/* ===== engine.meta.js ===== */
+/* ============================================================
+   META: hitos, récords, destacados, ventajas y Reto del Día
+   ============================================================ */
+
+/* ---------- Hitos de carrera ----------
+   Se comprueban al final de cada temporada. Dan legado y, sobre todo, dan la
+   sensación de que la carrera avanza hacia algo. */
+const MILESTONES = [
+  { id: 'debut', icon: '👕', name: 'Debut como profesional', legacy: 10, test: (c) => c.apps >= 1 },
+  { id: 'apps50', icon: '🎽', name: '50 partidos oficiales', legacy: 15, test: (c) => c.apps >= 50 },
+  { id: 'apps100', icon: '💯', name: '100 partidos oficiales', legacy: 25, test: (c) => c.apps >= 100 },
+  { id: 'apps250', icon: '🏟️', name: '250 partidos oficiales', legacy: 45, test: (c) => c.apps >= 250 },
+  { id: 'apps500', icon: '🗿', name: '500 partidos oficiales', legacy: 90, test: (c) => c.apps >= 500 },
+  { id: 'apps700', icon: '⏳', name: '700 partidos: pocos llegan aquí', legacy: 140, test: (c) => c.apps >= 700 },
+  { id: 'g1', icon: '⚽', name: 'Tu primer gol', legacy: 10, test: (c, p) => p.pos !== 'GK' && c.goals >= 1 },
+  { id: 'g50', icon: '🎯', name: '50 goles', legacy: 20, test: (c, p) => p.pos !== 'GK' && c.goals >= 50 },
+  { id: 'g100', icon: '💥', name: '100 goles', legacy: 40, test: (c, p) => p.pos !== 'GK' && c.goals >= 100 },
+  { id: 'g250', icon: '🔥', name: '250 goles', legacy: 80, test: (c, p) => p.pos !== 'GK' && c.goals >= 250 },
+  { id: 'g500', icon: '👑', name: '500 goles: territorio de leyenda', legacy: 200, test: (c, p) => p.pos !== 'GK' && c.goals >= 500 },
+  { id: 'a100', icon: '🪄', name: '100 asistencias', legacy: 40, test: (c, p) => p.pos !== 'GK' && c.assists >= 100 },
+  { id: 'cs100', icon: '🧤', name: '100 porterías a cero', legacy: 50, test: (c, p) => p.pos === 'GK' && c.cs >= 100 },
+  { id: 'cs200', icon: '🧱', name: '200 porterías a cero', legacy: 110, test: (c, p) => p.pos === 'GK' && c.cs >= 200 },
+  { id: 'nt1', icon: '🌐', name: 'Debut con la absoluta', legacy: 25, test: (c) => c.ntApps >= 1 },
+  { id: 'nt50', icon: '🎖️', name: '50 internacionalidades', legacy: 45, test: (c) => c.ntApps >= 50 },
+  { id: 'nt100', icon: '🏅', name: '100 internacionalidades', legacy: 100, test: (c) => c.ntApps >= 100 },
+  { id: 'ovr80', icon: '📈', name: 'Superar los 80 de media', legacy: 30, test: (c, p) => p.peakOvr >= 80 },
+  { id: 'ovr88', icon: '⭐', name: 'Clase mundial: 88 de media', legacy: 70, test: (c, p) => p.peakOvr >= 88 },
+  { id: 'ovr93', icon: '🌟', name: '93 de media: uno de los mejores del planeta', legacy: 160, test: (c, p) => p.peakOvr >= 93 },
+  { id: 't1', icon: '🏆', name: 'Tu primer título', legacy: 20, test: (c) => c.trophies >= 1 },
+  { id: 't10', icon: '🏆', name: '10 títulos', legacy: 60, test: (c) => c.trophies >= 10 },
+  { id: 't20', icon: '🏆', name: '20 títulos: una vitrina indecente', legacy: 140, test: (c) => c.trophies >= 20 },
+];
+
+function checkMilestones(G) {
+  const p = G.player, c = p.career;
+  p.milestones = p.milestones || {};
+  const hit = [];
+  MILESTONES.forEach((m) => {
+    if (p.milestones[m.id]) return;
+    if (!m.test(c, p)) return;
+    p.milestones[m.id] = seasonLabel(G);
+    p.legacyExtra = (p.legacyExtra || 0) + m.legacy;
+    hit.push(m);
+  });
+  return hit;
+}
+
+/* ---------- Récords personales ---------- */
+function updateRecords(G, rep) {
+  const p = G.player, s = rep.stats;
+  p.records = p.records || {};
+  const r = p.records;
+  const better = (key, val, extra) => {
+    if (val > (r[key] ? r[key].v : -1)) r[key] = { v: val, season: seasonLabel(G), club: rep.club.name, ...extra };
+  };
+  better('goals', s.goals);
+  better('assists', s.assists);
+  better('apps', s.apps);
+  better('rating', s.rating);
+  if (p.pos === 'GK') { better('cs', s.cs); better('saves', s.saves); }
+}
+/* Qué récords se han batido esta temporada (se llama ANTES de actualizarlos) */
+function brokenRecords(G, rep) {
+  const p = G.player, s = rep.stats, r = p.records || {};
+  const out = [];
+  const chk = (key, val, label, fmt) => {
+    if (!r[key] || val <= r[key].v) return;
+    if (val <= 0) return;
+    out.push(`${label} (${fmt ? fmt(val) : val}, antes ${fmt ? fmt(r[key].v) : r[key].v})`);
+  };
+  chk('goals', s.goals, 'más goles en una temporada');
+  chk('assists', s.assists, 'más asistencias en una temporada');
+  chk('rating', s.rating, 'mejor nota media', (v) => v.toFixed(2));
+  if (p.pos === 'GK') chk('cs', s.cs, 'más porterías a cero');
+  return out;
+}
+
+const RECORD_LABELS = {
+  goals: 'Más goles en una temporada', assists: 'Más asistencias en una temporada',
+  apps: 'Más partidos en una temporada', rating: 'Mejor nota media',
+  cs: 'Más porterías a cero', saves: 'Más paradas',
+};
+
+/* ---------- Destacados de la temporada ----------
+   Se deducen de los números reales, así que nunca cuentan algo que no pasó. */
+function seasonHighlights(G, rep) {
+  const p = G.player, s = rep.stats;
+  const out = [];
+  const club = rep.club.name;
+  if (s.apps < 5) return out;
+
+  if (p.pos !== 'GK' && s.goals >= 10) {
+    const hats = poisson(s.goals / 14);
+    if (hats >= 1) out.push({ icon: '🎩', cls: 'good', text: hats === 1
+      ? `Firmaste un <b>hat-trick</b> esta temporada.`
+      : `<b>${hats} hat-tricks</b> en una sola temporada.` });
+  }
+  if (p.pos !== 'GK' && s.goals >= 6 && chance(0.55)) {
+    const streak = clamp(2 + poisson(s.goals / 11), 2, 9);
+    out.push({ icon: '🔥', cls: 'good', text: `Marcaste en <b>${streak} partidos seguidos</b>.` });
+  }
+  if (p.pos !== 'GK' && s.goals >= 3 && chance(0.45)) {
+    out.push({ icon: '⏱️', cls: 'good', text: pick([
+      `Un gol tuyo en el minuto 90 dio tres puntos al ${club}.`,
+      `Marcaste el gol de la victoria en el derbi.`,
+      `Un golazo desde fuera del área tuyo abrió los informativos.`,
+      `Marcaste en el último suspiro para forzar un empate imposible.`,
+    ]) });
+  }
+  if (s.assists >= 6 && chance(0.5)) {
+    out.push({ icon: '🪄', cls: 'good', text: pick([
+      `Diste tres asistencias en un mismo partido.`,
+      `Tu pase del año se ha visto en todos los resúmenes.`,
+      `Repartiste asistencias en cuatro jornadas consecutivas.`,
+    ]) });
+  }
+  if (p.pos === 'GK' && s.saves >= 60 && chance(0.6)) {
+    out.push({ icon: '🧤', cls: 'good', text: pick([
+      `Hiciste <b>nueve paradas</b> en un solo partido y os salvaste con un punto.`,
+      `Encadenaste <b>cinco porterías a cero</b> seguidas.`,
+      `Paraste un penalti en el descuento.`,
+    ]) });
+  }
+  if (s.rating >= 7.6 && chance(0.5)) {
+    out.push({ icon: '📰', cls: 'info', text: `La prensa te ha metido en el once ideal de la jornada ${ri(3, 9)} veces.` });
+  }
+  if (s.red >= 1) out.push({ icon: '🟥', cls: 'bad', text: `Viste una <b>roja directa</b> que te costó sanción.` });
+  if (s.apps > 10 && s.rating <= 6.2) out.push({ icon: '📉', cls: 'bad', text: `La afición te señaló como uno de los puntos débiles del equipo.` });
+  return shuffle(out).slice(0, 3);
+}
+
+/* ---------- Ventajas desbloqueables ----------
+   Lo que se gana en una carrera sirve para la siguiente: engancha a volver a jugar. */
+const PERKS = [
+  { id: 'none', need: 0, icon: '🚫', name: 'Sin ventaja', desc: 'La carrera limpia, como debe ser.' },
+  { id: 'scout', need: 400, icon: '🔎', name: 'Ojo de ojeador', desc: 'Las opciones iniciales incluyen clubes algo mejores.' },
+  { id: 'body', need: 1200, icon: '🛡️', name: 'Cuerpo de hierro', desc: 'Empiezas con el rasgo Hombre de hierro: la mitad de lesiones.' },
+  { id: 'contacts', need: 2200, icon: '📇', name: 'Agenda de contactos', desc: 'Empiezas con superagente: más y mejores ofertas toda la carrera.' },
+  { id: 'genes', need: 3500, icon: '🧬', name: 'Genética privilegiada', desc: '+4 a tu techo secreto. No garantiza nada, pero ayuda.' },
+  { id: 'prodigy', need: 6000, icon: '✨', name: 'Prodigio', desc: '+7 al techo y empiezas dos puntos por encima.' },
+];
+function unlockedPerks(meta) {
+  const total = (meta.hall || []).reduce((a, h) => a + (h.legacy || 0), 0);
+  return { total, list: PERKS.map((p) => ({ ...p, unlocked: total >= p.need })) };
+}
+function applyPerk(p, perkId) {
+  switch (perkId) {
+    case 'body': if (!p.traits.includes('ironman')) p.traits.push('ironman'); break;
+    case 'contacts': p.flags.superAgent = 1; break;
+    case 'genes': p.pot = clamp(p.pot + 4, 40, 99); break;
+    case 'prodigy':
+      p.pot = clamp(p.pot + 7, 40, 99);
+      Object.keys(p.attrs).forEach((k) => { p.attrs[k] = clamp(p.attrs[k] + 2, 20, 99); });
+      p.ovr = computeOvr(p);
+      break;
+    default: break;
+  }
+  p.perk = perkId;
+}
+
+/* ---------- Reto del Día ----------
+   Todo el mundo que juegue hoy arranca exactamente con las mismas condiciones y
+   la misma semilla. Lo que cambie el resultado serán tus decisiones, no la suerte.
+   Al terminar sale una tarjeta de texto para pegar en el grupo. */
+function todayKey(d) {
+  const t = d || new Date();
+  return t.getUTCFullYear() * 10000 + (t.getUTCMonth() + 1) * 100 + t.getUTCDate();
+}
+function dailySeed(key) {
+  let h = 2166136261 ^ (key >>> 0);
+  for (let i = 0; i < 4; i++) { h = Math.imul(h ^ (h >>> 13), 16777619); }
+  return h >>> 0;
+}
+/* Genera las condiciones del reto de forma determinista */
+function dailyChallenge(key) {
+  const saved = RNG_STATE;
+  seedRng(dailySeed(key));
+  const pool = COUNTRIES.filter((c) => c.tier >= 2);
+  const country = pick(pool);
+  const pos = pick(POSITIONS).key;
+  const archKeys = Object.keys(ARCHETYPES);
+  const arch = pick(archKeys);
+  const twists = [
+    { id: 'none', name: 'Sin restricciones', desc: 'La carrera tal cual. Que hable el talento.' },
+    { id: 'hard', name: 'Sin red', desc: 'Empiezas en el club más modesto de los tres.' },
+    { id: 'home', name: 'De casa', desc: 'Empiezas obligatoriamente en tu país.' },
+    { id: 'exile', name: 'Exiliado', desc: 'Empiezas obligatoriamente fuera de tu país.' },
+  ];
+  const twist = pick(twists);
+  const goalPool = [
+    { id: 'ucl', name: 'Ganar la Champions', check: (p) => p.trophies.some((t) => t.name === 'UEFA Champions League') },
+    { id: 'ballon', name: 'Ganar el Balón de Oro', check: (p) => p.awards.some((a) => a.kind === 'ballon') },
+    { id: 'ovr90', name: 'Llegar a 90 de media', check: (p) => p.peakOvr >= 90 },
+    { id: 'nt', name: 'Jugar 50 partidos con tu selección', check: (p) => p.career.ntApps >= 50 },
+    { id: 'trophies', name: 'Ganar 12 títulos', check: (p) => p.career.trophies >= 12 },
+    { id: 'goals', name: 'Marcar 200 goles', check: (p) => p.career.goals >= 200 },
+  ];
+  const goal = pick(goalPool.filter((g) => !(pos === 'GK' && (g.id === 'goals' || g.id === 'ballon'))));
+  RNG_STATE = saved;
+  return { key, seed: dailySeed(key), country, pos, arch, twist, goal };
+}
+
+/* Puntuación del reto: legado más bonus por cumplir el objetivo */
+function challengeScore(G) {
+  const p = G.player;
+  const base = computeLegacy(G) + (p.legacyExtra || 0);
+  const ch = G.challenge;
+  const done = ch && ch.goal.check(p);
+  return { score: Math.round(base * (done ? 1.5 : 1)), base, goalDone: !!done };
+}
+
+/* Tarjeta de texto para compartir, estilo resultado de partido */
+function challengeShareText(G) {
+  const p = G.player, c = p.career, ch = G.challenge;
+  const { score, goalDone } = challengeScore(G);
+  const country = COUNTRY_BY_CODE[p.country];
+  const d = String(ch.key);
+  const fecha = `${d.slice(6, 8)}/${d.slice(4, 6)}`;
+  const rank = legacyRank(score);
+  const lines = [
+    `⚽ El Camino · Reto ${fecha}`,
+    `${country.flag} ${POS_BY_KEY[p.pos].name} · media máxima ${p.peakOvr}`,
+    `${goalDone ? '✅' : '❌'} ${ch.goal.name}`,
+    p.pos === 'GK'
+      ? `🧤 ${c.cs} porterías a cero · ${c.apps} partidos`
+      : `⚽ ${c.goals} goles · 🅰️ ${c.assists} asistencias · ${c.apps} partidos`,
+    `🏆 ${c.trophies} títulos · 🌐 ${c.ntApps} internacionalidades`,
+    `${rank.icon} ${rank.t} — ${score} puntos`,
+  ];
+  return lines.join('\n');
+}
+
+/* ---------- Gráfica de la evolución de la media ---------- */
+function ovrSparkline(history, w, h) {
+  const rows = history.filter((x) => x.ovr != null);
+  if (rows.length < 2) return '';
+  const W = w || 300, H = h || 74, pad = 6;
+  const vals = rows.map((r) => r.ovr);
+  const lo = Math.min(...vals) - 2, hi = Math.max(...vals) + 2;
+  const x = (i) => pad + (i / (rows.length - 1)) * (W - pad * 2);
+  const y = (v) => H - pad - ((v - lo) / Math.max(1, hi - lo)) * (H - pad * 2);
+  const line = rows.map((r, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(r.ovr).toFixed(1)}`).join(' ');
+  const area = `${line} L${x(rows.length - 1).toFixed(1)},${H - pad} L${x(0).toFixed(1)},${H - pad} Z`;
+  const peakI = vals.indexOf(Math.max(...vals));
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block" aria-label="Evolución de la media">
+    <defs><linearGradient id="spk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2ee66b" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#2ee66b" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="${area}" fill="url(#spk)"/>
+    <path d="${line}" fill="none" stroke="#2ee66b" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${x(peakI).toFixed(1)}" cy="${y(vals[peakI]).toFixed(1)}" r="3.6" fill="#ffc93c"/>
+    <text x="${x(peakI).toFixed(1)}" y="${(y(vals[peakI]) - 7).toFixed(1)}" text-anchor="middle"
+      font-family="Inter,sans-serif" font-size="11" font-weight="800" fill="#ffc93c">${vals[peakI]}</text>
+  </svg>`;
+}
+
+
 /* ===== ui.shared.js ===== */
 /* ============================================================
    INTERFAZ: utilidades de render y efectos
@@ -4857,6 +5116,12 @@ ACTIONS.closeModal = () => closeModals();
 const bar = (v, max, cls) => `<div class="bar ${cls || ''}"><i style="width:${clamp((v / max) * 100, 0, 100)}%"></i></div>`;
 const chip = (t, cls) => `<span class="chip ${cls || ''}">${t}</span>`;
 const stat = (v, l) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`;
+/* Igual que stat, pero con la diferencia respecto a la temporada anterior */
+function statD(v, l, delta) {
+  const d = (delta == null || delta === 0 || isNaN(delta)) ? ''
+    : `<i style="font-style:normal;font-size:11px;font-weight:800;margin-left:4px;color:${delta > 0 ? 'var(--acc)' : 'var(--red)'}">${delta > 0 ? '+' : ''}${delta}</i>`;
+  return `<div class="stat"><b>${v}${d}</b><span>${l}</span></div>`;
+}
 
 function seasonLabel(G) { return `${G.seasonStart}/${String(G.seasonStart + 1).slice(2)}`; }
 
@@ -5020,6 +5285,7 @@ function saveGame(G) {
       seasonFeed: G.seasonFeed, history: G.player.history,
       squad: G.squad, squadClubId: G.squadClubId,
       committedTo: G.committedTo, winterMove: G.winterMove, lastStature: G.lastStature,
+      challengeKey: G.challenge ? G.challenge.key : null,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
@@ -5041,6 +5307,7 @@ function loadGame() {
       seasonFeed: d.seasonFeed || [],
       squad: d.squad || null, squadClubId: d.squadClubId || null,
       committedTo: d.committedTo || null, winterMove: d.winterMove || null, lastStature: d.lastStature || 0,
+      challenge: d.challengeKey ? dailyChallenge(d.challengeKey) : null,
     };
     // sanear
     if (!G.club) return null;
@@ -5072,7 +5339,8 @@ function saveMeta(m) { try { localStorage.setItem(META_KEY, JSON.stringify(m)); 
    CREACION DE PERSONAJE
    ============================================================ */
 
-const NEW = { country: null, pos: null, arch: null, firstName: '', lastName: '', shirtName: '', number: 10, foot: 'Derecho', filter: '' };
+const NEW = { country: null, pos: null, arch: null, perk: 'none', challenge: null,
+  firstName: '', lastName: '', shirtName: '', number: 10, foot: 'Derecho', filter: '' };
 const START_YEAR = 2025;
 
 function brand() {
@@ -5089,6 +5357,7 @@ function brand() {
 function screenHome() {
   const meta = loadMeta();
   const cont = hasSave();
+  const perkInfo = unlockedPerks(meta);
   screen(`${brand()}
   <div class="card">
     <h2 style="font-size:26px;margin-bottom:8px">Tienes 16 años y una decisión que tomar.</h2>
@@ -5103,7 +5372,9 @@ function screenHome() {
     <div class="col mt">
       ${cont ? `<button class="btn primary wide" data-act="continue">▶️ Continuar carrera</button>` : ''}
       <button class="btn ${cont ? '' : 'primary'} wide" data-act="newCareer">${cont ? '🔁 Empezar una carrera nueva' : '⚽ Empezar mi carrera'}</button>
+      <button class="btn wide" data-act="dailyScreen">🎯 Reto del día${todayDone(meta) ? ' · jugado' : ''}</button>
       ${meta.hall.length ? `<button class="btn ghost wide" data-act="hall">🏛️ Sala de leyendas (${meta.hall.length})</button>` : ''}
+      ${perkInfo.total > 0 ? `<button class="btn ghost wide" data-act="perksScreen">🎁 Ventajas (${perkInfo.list.filter((x) => x.unlocked).length - 1} desbloqueadas)</button>` : ''}
     </div>
   </div>
   <div class="card">
@@ -5116,10 +5387,82 @@ function screenHome() {
     </div>
   </div>`);
 }
+/* ---------- Reto del día ----------
+   Mismas condiciones y misma semilla para todo el mundo ese día: lo único que
+   cambia el resultado son tus decisiones. Al terminar sale una tarjeta de texto
+   para pegar en el grupo y picarse. */
+function todayDone(meta) {
+  const d = meta.daily || {};
+  return d.key === todayKey();
+}
+ACTIONS.dailyScreen = () => {
+  const meta = loadMeta();
+  const ch = dailyChallenge(todayKey());
+  const prev = (meta.daily && meta.daily.key === ch.key) ? meta.daily : null;
+  const d = String(ch.key);
+  screen(`${brand()}
+  <div class="card" style="border-color:#4a3f1a;background:linear-gradient(160deg,#1b1608,#0a1119)">
+    <div class="tiny" style="color:var(--gold)">Reto del ${d.slice(6, 8)}/${d.slice(4, 6)}</div>
+    <h2 style="font-size:24px;margin:6px 0 8px">El mismo punto de partida para todos</h2>
+    <p class="dim small">Hoy, cualquiera que juegue este reto empieza exactamente igual que tú: mismo país,
+    misma posición, mismo perfil y la misma suerte. Lo único que va a marcar la diferencia entre tu carrera
+    y la de tus amigos son las decisiones que toméis. Al terminar te doy una tarjeta para mandarles.</p>
+    <div class="grid g2 mt" style="gap:8px">
+      ${miniCard(ch.country.flag, ch.country.name, 'Tu nacionalidad de hoy')}
+      ${miniCard('🎽', POS_BY_KEY[ch.pos].name, 'Tu posición')}
+      ${miniCard(ARCHETYPES[ch.arch].icon, ARCHETYPES[ch.arch].name, ARCHETYPES[ch.arch].desc)}
+      ${miniCard('🎲', ch.twist.name, ch.twist.desc)}
+    </div>
+    <div class="sub mt">
+      <div class="tiny">Objetivo del reto</div>
+      <div class="b" style="font-size:17px;margin-top:4px">🏁 ${esc(ch.goal.name)}</div>
+      <div class="small dim2 mt-s">Cumplirlo multiplica tu puntuación final por 1,5.</div>
+    </div>
+    ${prev ? `<div class="sub mt"><div class="tiny">Tu mejor intento de hoy</div>
+      <div class="row between mt-s"><span class="b gold" style="font-size:19px">${prev.best} puntos</span>
+      <span class="small dim">${esc(prev.rank || '')}</span></div></div>` : ''}
+  </div>
+  <div class="actionbar col" style="gap:8px">
+    <button class="btn primary wide" data-act="startDaily">🎯 Jugar el reto de hoy</button>
+    <button class="btn ghost wide" data-act="home">Volver</button>
+  </div>`);
+};
+ACTIONS.startDaily = () => {
+  if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return;
+  clearSave();
+  const ch = dailyChallenge(todayKey());
+  seedRng(ch.seed);                       // a partir de aquí, todos vivimos lo mismo
+  NEW.country = ch.country.code; NEW.pos = ch.pos; NEW.arch = ch.arch;
+  NEW.perk = 'none'; NEW.challenge = ch;
+  NEW.firstName = ''; NEW.lastName = ''; NEW.shirtName = ''; NEW.number = 10;
+  screenIdentity();
+};
+
+/* ---------- Ventajas desbloqueables ---------- */
+ACTIONS.perksScreen = () => {
+  const meta = loadMeta();
+  const info = unlockedPerks(meta);
+  screen(`${brand()}
+  <div class="card">
+    <h2>🎁 Ventajas</h2>
+    <p class="dim small">Cada carrera que terminas suma legado, y el legado acumulado desbloquea ventajas
+    con las que empezar la siguiente. Llevas <b class="gold">${info.total}</b> de legado acumulado.</p>
+    <div class="col mt">
+      ${info.list.filter((x) => x.id !== 'none').map((x) => `<div class="sub row" style="gap:11px;${x.unlocked ? '' : 'opacity:.45'}">
+        <span style="font-size:20px">${x.unlocked ? x.icon : '🔒'}</span>
+        <div class="grow"><div class="b small">${esc(x.name)}</div>
+        <div class="small dim2">${esc(x.desc)}</div></div>
+        ${x.unlocked ? chip('Disponible', 'on') : chip(x.need + ' legado', '')}
+      </div>`).join('')}
+    </div>
+  </div>
+  <div class="actionbar"><button class="btn wide" data-act="home">Volver</button></div>`);
+};
+
 function miniCard(ic, t, d) {
   return `<div class="sub"><div style="font-size:20px">${ic}</div><div class="b" style="margin:4px 0 2px">${t}</div><div class="small dim">${d}</div></div>`;
 }
-ACTIONS.newCareer = () => { if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return; clearSave(); NEW.country = null; NEW.pos = null; NEW.arch = null; screenCountry(); };
+ACTIONS.newCareer = () => { if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return; clearSave(); NEW.country = null; NEW.pos = null; NEW.arch = null; NEW.challenge = null; NEW.perk = 'none'; screenCountry(); };
 ACTIONS.continue = () => { const G = loadGame(); if (!G) { alert('No se ha podido cargar la partida.'); return; } window.G = G; renderStep(); };
 ACTIONS.home = () => screenHome();
 
@@ -5221,11 +5564,30 @@ function screenArchetype() {
       }).join('')}
     </div>
   </div>
+  ${perkSection()}
   <div class="actionbar row" style="gap:10px">
     <button class="btn ghost" data-act="toPos">Atrás</button>
     <button class="btn primary grow" data-act="toIdentity" ${NEW.arch ? '' : 'disabled'}>Continuar</button>
   </div>`);
 }
+function perkSection() {
+  const info = unlockedPerks(loadMeta());
+  const avail = info.list.filter((x) => x.unlocked);
+  if (avail.length <= 1) return '';
+  return `<div class="card">
+    <div class="tiny">Ventajas desbloqueadas</div>
+    <h3 style="margin:3px 0 8px">¿Empiezas con algo de ventaja?</h3>
+    <p class="small dim2">Te lo has ganado con carreras anteriores. Solo puedes elegir una.</p>
+    <div class="grid autowide mt-s">
+      ${avail.map((x) => `<button class="pick ${(NEW.perk || 'none') === x.id ? 'on' : ''}" data-act="pickPerk" data-key="${x.id}">
+        <span class="flag">${x.icon}</span>
+        <span class="grow" style="min-width:0"><span class="nm" style="display:block">${esc(x.name)}</span>
+        <span class="small dim2">${esc(x.desc)}</span></span>
+      </button>`).join('')}
+    </div>
+  </div>`;
+}
+ACTIONS.pickPerk = (d) => { NEW.perk = d.key; screenArchetype(); };
 ACTIONS.pickArch = (d) => { NEW.arch = d.key; screenArchetype(); };
 ACTIONS.toIdentity = () => screenIdentity();
 
@@ -5235,6 +5597,10 @@ function screenIdentity() {
   const kit = c.kit;
   const nm = NEW.shirtName || NEW.lastName || 'TU NOMBRE';
   screen(`${brand()}${steps(4)}
+  ${NEW.challenge ? `<div class="card" style="border-color:#5b4a1a;background:#191507;padding:12px">
+    <div class="row between"><span class="tiny" style="color:var(--gold)">🎯 Reto del día</span>
+    <span class="small b">${esc(NEW.challenge.goal.name)}</span></div>
+  </div>` : ''}
   <div class="card">
     <h2>Tu camiseta</h2>
     <p class="dim small">Con los colores de ${c.flag} ${esc(c.name)}. Así te van a ver los aficionados durante los próximos veinte años.</p>
@@ -5256,7 +5622,7 @@ function screenIdentity() {
     </div>
   </div>
   <div class="actionbar row" style="gap:10px">
-    <button class="btn ghost" data-act="toArch">Atrás</button>
+    <button class="btn ghost" data-act="${NEW.challenge ? 'home' : 'toArch'}">${NEW.challenge ? 'Salir' : 'Atrás'}</button>
     <button class="btn primary grow" data-act="createChar" ${NEW.firstName.trim() && NEW.lastName.trim() ? '' : 'disabled'}>Firmar mi primer contrato</button>
   </div>`);
 }
@@ -5286,14 +5652,32 @@ ACTIONS.createChar = () => {
     archetype: NEW.arch, startYear: START_YEAR,
   });
   p.money = 0; p.legacyExtra = 0; p.peakOvr = p.ovr;
+  if (NEW.perk && NEW.perk !== 'none') applyPerk(p, NEW.perk);
+  p.peakOvr = p.ovr;
   window.G = {
     seasonStart: START_YEAR, player: p, club: null, world: {}, mods: freshMods(),
     objectives: [], step: 'start', queue: [], seasonFeed: [],
+    challenge: NEW.challenge || null,
   };
   computeEuroSpots(G);
-  G.startOptions = startingOptions(G);
+  G.startOptions = applyTwist(G, startingOptions(G));
   screenStart();
 };
+
+/* La condición especial del reto recorta las puertas de salida */
+function applyTwist(G, opts) {
+  const ch = G.challenge;
+  if (!ch || ch.twist.id === 'none') return opts;
+  const home = G.player.country;
+  let out = opts;
+  if (ch.twist.id === 'home') out = opts.filter((o) => (o.parent || o.club).country === home);
+  else if (ch.twist.id === 'exile') out = opts.filter((o) => (o.parent || o.club).country !== home);
+  else if (ch.twist.id === 'hard') {
+    const worst = opts.slice().sort((a, b) => a.club.str - b.club.str)[0];
+    out = worst ? [worst] : opts;
+  }
+  return out.length ? out : opts;
+}
 
 function screenStart() {
   const p = G.player;
@@ -5583,12 +5967,28 @@ ACTIONS.evOpt = (d) => {
   const G = window.G;
   const b = G.queue[0];
   const o = b.ev.opts[+d.i];
+  // Una opción que te ata durante años no se pulsa sin querer
+  if (optionImportance(o) === 3 && !d.confirmed) return confirmCrucial(o, () => ACTIONS.evOpt({ ...d, confirmed: '1' }));
   const note = applyEffects(G, o.e);
   G.seasonFeed.push({ icon: '💬', cls: 'info', text: `<b>${esc(b.ev.title)}</b> — ${esc(o.l)}${note ? '. ' + esc(note) : '.'}` });
   G.queue.shift(); saveGame(G);
   if (note) resultCard(b.ev.title, note, () => renderStep());
   else renderStep();
 };
+
+function confirmCrucial(o, then) {
+  const w = modal(`<div class="imp" style="color:var(--red)">⚠ Decisión crucial</div>
+    <h3 style="margin:8px 0 8px">${esc(o.l)}</h3>
+    ${o.d ? `<p class="dim small">${esc(o.d)}</p>` : ''}
+    <div class="row wrap" style="gap:6px">${effectChips(o)}</div>
+    <p class="small dim2 mt">Esto va a marcar tu carrera. No hay vuelta atrás.</p>
+    <div class="col mt">
+      <button class="btn primary wide" data-act="crucialYes">Sí, adelante</button>
+      <button class="btn ghost wide" data-act="crucialNo">Mejor no</button>
+    </div>`, { sticky: true });
+  ACTIONS.crucialYes = () => { w.remove(); then(); };
+  ACTIONS.crucialNo = () => { w.remove(); };
+}
 
 function resultCard(title, text, then) {
   const w = modal(`<div class="tiny">${esc(title)}</div>
@@ -5664,6 +6064,7 @@ ACTIONS.stOpt = (d) => {
   const arc = STORY_BY_ID[b.arcId];
   const st = p.arcs[b.arcId];
   const o = arc.stages[st.stage].opts[+d.i];
+  if (optionImportance(o) === 3 && !d.confirmed) return confirmCrucial(o, () => ACTIONS.stOpt({ ...d, confirmed: '1' }));
   const note = applyEffects(G, o.e);
   if (o.score) st.data.score = (st.data.score || 0) + o.score;
   const next = o.next != null ? o.next : st.stage + 1;
@@ -5743,6 +6144,13 @@ function runSimulation() {
   G.lastTables = {};
   if (rep.league && rep.table) G.lastTables[leagueOfClub(G, rep.club)] = rep.table;
 
+  /* hitos, récords y destacados: hacen que la temporada se sienta como un capítulo */
+  rep.milestones = checkMilestones(G);
+  rep.broken = brokenRecords(G, rep);      // antes de actualizar, para saber qué se ha batido
+  rep.prev = p.history.filter((h) => h.rating != null).slice(-1)[0] || null;
+  updateRecords(G, rep);
+  rep.highlights = seasonHighlights(G, rep);
+
   G.lastReport = rep; G.lastNt = nt; G.lastAwards = awards;
   G.step = 'report';
   saveGame(G);
@@ -5771,8 +6179,11 @@ function screenReport() {
   if (rep.youthNote) feed.push({ icon: '🌱', cls: 'info', text: esc(rep.youthNote) });
   if (rep.relegated) feed.push({ icon: '⬇️', cls: 'bad', text: `El ${esc(rep.club.name)} desciende de categoría.` });
   if (rep.promoted) feed.push({ icon: '⬆️', cls: 'good', text: `¡El ${esc(rep.club.name)} sube de categoría!` });
+  (rep.broken || []).forEach((b) => feed.push({ icon: '📊', cls: 'gold', text: `<b>Récord personal:</b> ${esc(b)}` }));
+  (rep.highlights || []).forEach((h) => feed.push(h));
   nt.feed.forEach((f) => feed.push(f));
   awards.forEach((a) => feed.push({ icon: a.icon, cls: 'gold', text: `<b>${esc(a.name)}</b>` }));
+  (rep.milestones || []).forEach((m) => feed.push({ icon: m.icon, cls: 'gold', text: `<b>Hito:</b> ${esc(m.name)}` }));
 
   const tableRows = buildTableView(rep);
 
@@ -5790,10 +6201,10 @@ function screenReport() {
       </div>
     </div>
     <div class="stats mt">
-      ${stat(s.apps, 'Partidos')}
+      ${statD(s.apps, 'Partidos', rep.prev && s.apps - rep.prev.apps)}
       ${stat(Math.round(s.mins), 'Minutos')}
-      ${isGKp ? stat(s.cs, 'Portería 0') : stat(s.goals, 'Goles')}
-      ${isGKp ? stat(s.conceded, 'Encajados') : stat(s.assists, 'Asistencias')}
+      ${isGKp ? statD(s.cs, 'Portería 0', rep.prev && s.cs - rep.prev.cs) : statD(s.goals, 'Goles', rep.prev && s.goals - rep.prev.goals)}
+      ${isGKp ? stat(s.conceded, 'Encajados') : statD(s.assists, 'Asistencias', rep.prev && s.assists - rep.prev.assists)}
       ${isGKp ? stat(s.saves, 'Paradas') : stat(s.motm, 'MVP')}
       ${stat(s.yellow + (s.red ? '/' + s.red : ''), s.red ? 'Tarj. A/R' : 'Amarillas')}
     </div>
@@ -5866,6 +6277,10 @@ function screenDevelop() {
       </div>
     </div>
     <p class="small dim mt">${devNarrative(p, dev)}</p>
+    ${p.history.filter((h) => h.ovr != null).length >= 2 ? `<div class="sub mt-s" style="padding:8px 4px 2px">
+      <div class="tiny" style="padding-left:8px">Tu media, temporada a temporada</div>
+      ${ovrSparkline(p.history, 320, 78)}
+    </div>` : ''}
   </div>
 
   <div class="card">
@@ -6031,12 +6446,19 @@ function screenRetired() {
   const byTitle = {};
   p.trophies.forEach((t) => { byTitle[t.name] = (byTitle[t.name] || 0) + 1; });
 
+  const ch = G.challenge;
+  const chRes = ch ? challengeScore(G) : null;
+
   // guardar en la sala de leyendas (una sola vez)
   if (!p.savedToHall) {
     p.savedToHall = true;
     const meta = loadMeta();
     meta.careers = (meta.careers || 0) + 1;
     meta.best = Math.max(meta.best || 0, L);
+    if (ch && chRes) {
+      const prev = (meta.daily && meta.daily.key === ch.key) ? meta.daily.best : 0;
+      meta.daily = { key: ch.key, best: Math.max(prev, chRes.score), rank: legacyRank(chRes.score).t };
+    }
     meta.hall.unshift({
       name: displayName(p), country: p.country, pos: p.pos, peak: p.peakOvr,
       legacy: L, rank: rank.t, goals: c.goals, apps: c.apps, trophies: c.trophies,
@@ -6048,6 +6470,18 @@ function screenRetired() {
   }
 
   screen(`${brand()}
+  ${ch ? `<div class="card" style="border-color:#4a3f1a;background:linear-gradient(160deg,#1b1608,#0a1119)">
+    <div class="row between"><span class="tiny" style="color:var(--gold)">🎯 Reto del día</span>
+      <span class="small b ${chRes.goalDone ? 'acc' : 'red'}">${chRes.goalDone ? '✅ Objetivo cumplido' : '❌ Objetivo fallado'}</span></div>
+    <div class="small dim mt-s">${esc(ch.goal.name)}</div>
+    <div class="tc" style="margin:12px 0 6px">
+      <div style="font-size:38px;font-weight:900;letter-spacing:-1px" class="gold">${chRes.score}</div>
+      <div class="tiny">Puntos${chRes.goalDone ? ' · incluye el ×1,5 por cumplir el objetivo' : ''}</div>
+    </div>
+    <pre id="shareBox" style="white-space:pre-wrap;background:#0b131b;border:1px solid var(--line);border-radius:11px;
+      padding:11px;font:600 12.5px/1.5 var(--font);margin:10px 0 0">${esc(challengeShareText(G))}</pre>
+    <button class="btn primary wide mt-s" data-act="copyShare">📋 Copiar para mandarlo al grupo</button>
+  </div>` : ''}
   <div class="card tc" style="border-color:#4a3f1a;background:linear-gradient(180deg,#1c1708,#0a1119)">
     <div style="font-size:44px">${rank.icon}</div>
     <div class="tiny" style="letter-spacing:.14em">Fin de la carrera</div>
@@ -6087,10 +6521,36 @@ function screenRetired() {
       <span class="small"><b>${esc(a.icon)} ${esc(a.name)}</b></span><span class="small dim2">${esc(a.season)}</span>
     </div>`).join('')}</div></div>` : ''}
 
+  ${p.history.filter((h) => h.ovr != null).length >= 2 ? `<div class="card">
+    <div class="tiny">Tu media a lo largo de la carrera</div>
+    ${ovrSparkline(p.history, 340, 92)}
+  </div>` : ''}
+
+  ${p.records && Object.keys(p.records).length ? `<div class="card">
+    <div class="tiny">Récords personales</div>
+    <div class="col mt-s" style="gap:6px">
+      ${Object.keys(p.records).filter((k) => RECORD_LABELS[k]).map((k) => `<div class="sub row between">
+        <span class="small">${esc(RECORD_LABELS[k])}</span>
+        <span class="small"><b>${k === 'rating' ? p.records[k].v.toFixed(2) : p.records[k].v}</b>
+        <span class="dim2">· ${esc(p.records[k].season)}, ${esc(p.records[k].club)}</span></span>
+      </div>`).join('')}
+    </div>
+  </div>` : ''}
+
+  ${p.milestones && Object.keys(p.milestones).length ? `<div class="card">
+    <div class="tiny">Hitos alcanzados</div>
+    <div class="grid autowide mt-s">
+      ${MILESTONES.filter((m) => p.milestones[m.id]).map((m) => `<div class="trophy">
+        <span class="ic">${m.icon}</span><div><div class="n">${esc(m.name)}</div>
+        <div class="small dim2">${esc(p.milestones[m.id])}</div></div></div>`).join('')}
+    </div>
+  </div>` : ''}
+
   ${careerTable(p)}
 
   <div class="actionbar col" style="gap:8px">
     <button class="btn primary wide" data-act="newCareer">Empezar otra carrera</button>
+    ${ch ? '<button class="btn wide" data-act="dailyScreen">🎯 Volver a intentar el reto</button>' : ''}
     <button class="btn ghost wide" data-act="hall">🏛️ Sala de leyendas</button>
   </div>`);
 }
@@ -6110,6 +6570,24 @@ function careerTable(p) {
         <td class="num">${gk ? h.cs : h.goals}</td><td class="num">${gk ? (h.conceded || 0) : h.assists}</td>
         <td class="num">${h.rating.toFixed(2)}</td></tr>`).join('')}
       </tbody></table></div></div>`;
+}
+
+ACTIONS.copyShare = () => {
+  const box = document.getElementById('shareBox');
+  if (!box) return;
+  const txt = box.textContent;
+  const done = () => toast('Copiado. ¡A picarse!');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(done, () => fallbackCopy(txt, done));
+  } else fallbackCopy(txt, done);
+};
+function fallbackCopy(txt, done) {
+  // Sin permisos de portapapeles hay que hacerlo a la vieja usanza
+  const ta = document.createElement('textarea');
+  ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) { toast('Selecciona el texto y cópialo a mano'); }
+  ta.remove();
 }
 
 /* ---------- Sala de leyendas ---------- */

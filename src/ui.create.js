@@ -2,7 +2,8 @@
    CREACION DE PERSONAJE
    ============================================================ */
 
-const NEW = { country: null, pos: null, arch: null, firstName: '', lastName: '', shirtName: '', number: 10, foot: 'Derecho', filter: '' };
+const NEW = { country: null, pos: null, arch: null, perk: 'none', challenge: null,
+  firstName: '', lastName: '', shirtName: '', number: 10, foot: 'Derecho', filter: '' };
 const START_YEAR = 2025;
 
 function brand() {
@@ -19,6 +20,7 @@ function brand() {
 function screenHome() {
   const meta = loadMeta();
   const cont = hasSave();
+  const perkInfo = unlockedPerks(meta);
   screen(`${brand()}
   <div class="card">
     <h2 style="font-size:26px;margin-bottom:8px">Tienes 16 años y una decisión que tomar.</h2>
@@ -33,7 +35,9 @@ function screenHome() {
     <div class="col mt">
       ${cont ? `<button class="btn primary wide" data-act="continue">▶️ Continuar carrera</button>` : ''}
       <button class="btn ${cont ? '' : 'primary'} wide" data-act="newCareer">${cont ? '🔁 Empezar una carrera nueva' : '⚽ Empezar mi carrera'}</button>
+      <button class="btn wide" data-act="dailyScreen">🎯 Reto del día${todayDone(meta) ? ' · jugado' : ''}</button>
       ${meta.hall.length ? `<button class="btn ghost wide" data-act="hall">🏛️ Sala de leyendas (${meta.hall.length})</button>` : ''}
+      ${perkInfo.total > 0 ? `<button class="btn ghost wide" data-act="perksScreen">🎁 Ventajas (${perkInfo.list.filter((x) => x.unlocked).length - 1} desbloqueadas)</button>` : ''}
     </div>
   </div>
   <div class="card">
@@ -46,10 +50,82 @@ function screenHome() {
     </div>
   </div>`);
 }
+/* ---------- Reto del día ----------
+   Mismas condiciones y misma semilla para todo el mundo ese día: lo único que
+   cambia el resultado son tus decisiones. Al terminar sale una tarjeta de texto
+   para pegar en el grupo y picarse. */
+function todayDone(meta) {
+  const d = meta.daily || {};
+  return d.key === todayKey();
+}
+ACTIONS.dailyScreen = () => {
+  const meta = loadMeta();
+  const ch = dailyChallenge(todayKey());
+  const prev = (meta.daily && meta.daily.key === ch.key) ? meta.daily : null;
+  const d = String(ch.key);
+  screen(`${brand()}
+  <div class="card" style="border-color:#4a3f1a;background:linear-gradient(160deg,#1b1608,#0a1119)">
+    <div class="tiny" style="color:var(--gold)">Reto del ${d.slice(6, 8)}/${d.slice(4, 6)}</div>
+    <h2 style="font-size:24px;margin:6px 0 8px">El mismo punto de partida para todos</h2>
+    <p class="dim small">Hoy, cualquiera que juegue este reto empieza exactamente igual que tú: mismo país,
+    misma posición, mismo perfil y la misma suerte. Lo único que va a marcar la diferencia entre tu carrera
+    y la de tus amigos son las decisiones que toméis. Al terminar te doy una tarjeta para mandarles.</p>
+    <div class="grid g2 mt" style="gap:8px">
+      ${miniCard(ch.country.flag, ch.country.name, 'Tu nacionalidad de hoy')}
+      ${miniCard('🎽', POS_BY_KEY[ch.pos].name, 'Tu posición')}
+      ${miniCard(ARCHETYPES[ch.arch].icon, ARCHETYPES[ch.arch].name, ARCHETYPES[ch.arch].desc)}
+      ${miniCard('🎲', ch.twist.name, ch.twist.desc)}
+    </div>
+    <div class="sub mt">
+      <div class="tiny">Objetivo del reto</div>
+      <div class="b" style="font-size:17px;margin-top:4px">🏁 ${esc(ch.goal.name)}</div>
+      <div class="small dim2 mt-s">Cumplirlo multiplica tu puntuación final por 1,5.</div>
+    </div>
+    ${prev ? `<div class="sub mt"><div class="tiny">Tu mejor intento de hoy</div>
+      <div class="row between mt-s"><span class="b gold" style="font-size:19px">${prev.best} puntos</span>
+      <span class="small dim">${esc(prev.rank || '')}</span></div></div>` : ''}
+  </div>
+  <div class="actionbar col" style="gap:8px">
+    <button class="btn primary wide" data-act="startDaily">🎯 Jugar el reto de hoy</button>
+    <button class="btn ghost wide" data-act="home">Volver</button>
+  </div>`);
+};
+ACTIONS.startDaily = () => {
+  if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return;
+  clearSave();
+  const ch = dailyChallenge(todayKey());
+  seedRng(ch.seed);                       // a partir de aquí, todos vivimos lo mismo
+  NEW.country = ch.country.code; NEW.pos = ch.pos; NEW.arch = ch.arch;
+  NEW.perk = 'none'; NEW.challenge = ch;
+  NEW.firstName = ''; NEW.lastName = ''; NEW.shirtName = ''; NEW.number = 10;
+  screenIdentity();
+};
+
+/* ---------- Ventajas desbloqueables ---------- */
+ACTIONS.perksScreen = () => {
+  const meta = loadMeta();
+  const info = unlockedPerks(meta);
+  screen(`${brand()}
+  <div class="card">
+    <h2>🎁 Ventajas</h2>
+    <p class="dim small">Cada carrera que terminas suma legado, y el legado acumulado desbloquea ventajas
+    con las que empezar la siguiente. Llevas <b class="gold">${info.total}</b> de legado acumulado.</p>
+    <div class="col mt">
+      ${info.list.filter((x) => x.id !== 'none').map((x) => `<div class="sub row" style="gap:11px;${x.unlocked ? '' : 'opacity:.45'}">
+        <span style="font-size:20px">${x.unlocked ? x.icon : '🔒'}</span>
+        <div class="grow"><div class="b small">${esc(x.name)}</div>
+        <div class="small dim2">${esc(x.desc)}</div></div>
+        ${x.unlocked ? chip('Disponible', 'on') : chip(x.need + ' legado', '')}
+      </div>`).join('')}
+    </div>
+  </div>
+  <div class="actionbar"><button class="btn wide" data-act="home">Volver</button></div>`);
+};
+
 function miniCard(ic, t, d) {
   return `<div class="sub"><div style="font-size:20px">${ic}</div><div class="b" style="margin:4px 0 2px">${t}</div><div class="small dim">${d}</div></div>`;
 }
-ACTIONS.newCareer = () => { if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return; clearSave(); NEW.country = null; NEW.pos = null; NEW.arch = null; screenCountry(); };
+ACTIONS.newCareer = () => { if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return; clearSave(); NEW.country = null; NEW.pos = null; NEW.arch = null; NEW.challenge = null; NEW.perk = 'none'; screenCountry(); };
 ACTIONS.continue = () => { const G = loadGame(); if (!G) { alert('No se ha podido cargar la partida.'); return; } window.G = G; renderStep(); };
 ACTIONS.home = () => screenHome();
 
@@ -151,11 +227,30 @@ function screenArchetype() {
       }).join('')}
     </div>
   </div>
+  ${perkSection()}
   <div class="actionbar row" style="gap:10px">
     <button class="btn ghost" data-act="toPos">Atrás</button>
     <button class="btn primary grow" data-act="toIdentity" ${NEW.arch ? '' : 'disabled'}>Continuar</button>
   </div>`);
 }
+function perkSection() {
+  const info = unlockedPerks(loadMeta());
+  const avail = info.list.filter((x) => x.unlocked);
+  if (avail.length <= 1) return '';
+  return `<div class="card">
+    <div class="tiny">Ventajas desbloqueadas</div>
+    <h3 style="margin:3px 0 8px">¿Empiezas con algo de ventaja?</h3>
+    <p class="small dim2">Te lo has ganado con carreras anteriores. Solo puedes elegir una.</p>
+    <div class="grid autowide mt-s">
+      ${avail.map((x) => `<button class="pick ${(NEW.perk || 'none') === x.id ? 'on' : ''}" data-act="pickPerk" data-key="${x.id}">
+        <span class="flag">${x.icon}</span>
+        <span class="grow" style="min-width:0"><span class="nm" style="display:block">${esc(x.name)}</span>
+        <span class="small dim2">${esc(x.desc)}</span></span>
+      </button>`).join('')}
+    </div>
+  </div>`;
+}
+ACTIONS.pickPerk = (d) => { NEW.perk = d.key; screenArchetype(); };
 ACTIONS.pickArch = (d) => { NEW.arch = d.key; screenArchetype(); };
 ACTIONS.toIdentity = () => screenIdentity();
 
@@ -165,6 +260,10 @@ function screenIdentity() {
   const kit = c.kit;
   const nm = NEW.shirtName || NEW.lastName || 'TU NOMBRE';
   screen(`${brand()}${steps(4)}
+  ${NEW.challenge ? `<div class="card" style="border-color:#5b4a1a;background:#191507;padding:12px">
+    <div class="row between"><span class="tiny" style="color:var(--gold)">🎯 Reto del día</span>
+    <span class="small b">${esc(NEW.challenge.goal.name)}</span></div>
+  </div>` : ''}
   <div class="card">
     <h2>Tu camiseta</h2>
     <p class="dim small">Con los colores de ${c.flag} ${esc(c.name)}. Así te van a ver los aficionados durante los próximos veinte años.</p>
@@ -186,7 +285,7 @@ function screenIdentity() {
     </div>
   </div>
   <div class="actionbar row" style="gap:10px">
-    <button class="btn ghost" data-act="toArch">Atrás</button>
+    <button class="btn ghost" data-act="${NEW.challenge ? 'home' : 'toArch'}">${NEW.challenge ? 'Salir' : 'Atrás'}</button>
     <button class="btn primary grow" data-act="createChar" ${NEW.firstName.trim() && NEW.lastName.trim() ? '' : 'disabled'}>Firmar mi primer contrato</button>
   </div>`);
 }
@@ -216,14 +315,32 @@ ACTIONS.createChar = () => {
     archetype: NEW.arch, startYear: START_YEAR,
   });
   p.money = 0; p.legacyExtra = 0; p.peakOvr = p.ovr;
+  if (NEW.perk && NEW.perk !== 'none') applyPerk(p, NEW.perk);
+  p.peakOvr = p.ovr;
   window.G = {
     seasonStart: START_YEAR, player: p, club: null, world: {}, mods: freshMods(),
     objectives: [], step: 'start', queue: [], seasonFeed: [],
+    challenge: NEW.challenge || null,
   };
   computeEuroSpots(G);
-  G.startOptions = startingOptions(G);
+  G.startOptions = applyTwist(G, startingOptions(G));
   screenStart();
 };
+
+/* La condición especial del reto recorta las puertas de salida */
+function applyTwist(G, opts) {
+  const ch = G.challenge;
+  if (!ch || ch.twist.id === 'none') return opts;
+  const home = G.player.country;
+  let out = opts;
+  if (ch.twist.id === 'home') out = opts.filter((o) => (o.parent || o.club).country === home);
+  else if (ch.twist.id === 'exile') out = opts.filter((o) => (o.parent || o.club).country !== home);
+  else if (ch.twist.id === 'hard') {
+    const worst = opts.slice().sort((a, b) => a.club.str - b.club.str)[0];
+    out = worst ? [worst] : opts;
+  }
+  return out.length ? out : opts;
+}
 
 function screenStart() {
   const p = G.player;
