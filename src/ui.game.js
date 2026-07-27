@@ -28,6 +28,7 @@ function startSeason(G, first) {
     G.mods.mins *= (p.startMinsMod || 1);
     G.mods.growth *= (p.startDev || 1);
   }
+  syncSquad(G);
   G.objectives = makeObjectives(G);
   G.seasonFeed = [];
   G.queue = buildQueue(G, first);
@@ -133,7 +134,8 @@ function screenBeat() {
 function screenPreseason() {
   const G = window.G, p = G.player, c = G.club;
   const lg = LEAGUES[leagueOfClub(G, c)];
-  const role = squadRole(p, c);
+  const role = squadRole(p, c, competitorGap(G));
+  const comp = competitorFor(G);
   const euro = G.euro[c.academy ? c.parent : c.id];
   screen(`${topbar(G)}${hud(G)}
   <div class="card">
@@ -142,6 +144,7 @@ function screenPreseason() {
     <div class="col" style="gap:8px">
       ${G.objectives.map((o) => `<div class="sub row between"><span class="small">${esc(o.text)}</span>${chip('+' + o.reward + ' PE', '')}</div>`).join('')}
     </div>
+    ${comp ? competitorCard(G, comp) : ''}
     <div class="row wrap mt" style="gap:6px">
       ${chip('Rol: ' + role.name, role.min >= 0.68 ? 'on' : 'warn')}
       ${euro ? chip('🌍 ' + contCompName(c.confed, euro), 'on') : ''}
@@ -158,6 +161,30 @@ function screenPreseason() {
     </div>
   </div>`);
 }
+function competitorCard(G, comp) {
+  const p = G.player;
+  const d = p.ovr - comp.ovr;
+  const cc = COUNTRY_BY_CODE[comp.country];
+  const verdict = d >= 4 ? ['El puesto es tuyo.', 'on']
+    : d >= -1 ? ['Estáis muy igualados. Se decide en el campo.', 'warn']
+      : d >= -6 ? ['Ahora mismo juega él.', 'warn']
+        : ['Te saca mucha diferencia. Vas a mirar desde el banquillo.', 'bad'];
+  return `<div class="sub mt">
+    <div class="tiny">Tu puesto</div>
+    <div class="row between mt-s" style="gap:10px">
+      <div class="row" style="gap:9px;min-width:0">
+        <div class="ovr" style="width:44px;height:44px;border-radius:13px"><b style="font-size:18px">${comp.ovr}</b></div>
+        <div style="min-width:0">
+          <div class="b small">${cc ? cc.flag : ''} ${esc(comp.name)}${comp.isNew ? ' <span class="gold">· fichaje</span>' : ''}</div>
+          <div class="small dim2">${comp.age} años · ${POS_BY_KEY[comp.pos].name}</div>
+        </div>
+      </div>
+      <div class="ovr ${ovrTier(p.ovr)}" style="width:44px;height:44px;border-radius:13px"><b style="font-size:18px">${p.ovr}</b></div>
+    </div>
+    <div class="small mt-s ${verdict[1] === 'bad' ? 'red' : verdict[1] === 'warn' ? 'gold' : 'acc'}">${verdict[0]}</div>
+  </div>`;
+}
+
 const PRESEASON = [
   { l: '🔥 Pretemporada a tope', d: 'Llegas fino como nunca. Riesgo de romperte antes de empezar.', e: { fitness: 12, growth: 1.1, injuryRisk: 1.25, form: 8 } },
   { l: '🧠 Trabajo táctico y vídeo', d: 'Te ganas al entrenador desde julio.', e: { trust: 10, attr: { men: 2 }, rating: 0.05 } },
@@ -561,7 +588,8 @@ function marketCard(G, o, i) {
   const c = o.club;
   const lg = LEAGUES[leagueOfClub(G, c)];
   const cc = COUNTRY_BY_CODE[c.country];
-  const role = squadRole(p, c);
+  const role = squadRole(p, c, competitorGap(G));
+  const comp = competitorFor(G);
   const euro = G.euro[c.academy ? c.parent : c.id];
   return `<button class="opt" data-act="mkOpt" data-i="${i}">
     <div class="row" style="gap:11px">
@@ -731,7 +759,7 @@ function showProfile(tab) {
   const c = p.career;
   const list = attrsFor(p.pos);
   const country = COUNTRY_BY_CODE[p.country];
-  const tabs = [['perfil', 'Perfil'], ['palmares', 'Palmarés'], ['historial', 'Historial'], ['liga', 'Mi liga']];
+  const tabs = [['perfil', 'Perfil'], ['vestuario', 'Vestuario'], ['palmares', 'Palmarés'], ['historial', 'Historial'], ['liga', 'Mi liga']];
   let body = '';
   if (tab === 'perfil') {
     body = `<div class="kitwrap">${kitSVG(country.kit.shirt, country.kit.trim, country.kit.ink, shirtName(p), p.number)}</div>
@@ -745,6 +773,21 @@ function showProfile(tab) {
         ${stat(c.trophies, 'Títulos')}${stat(p.nt.caps, 'Intern.')}${stat(fmtM(p.money || 0), 'Patrimonio')}
       </div>
       ${p.traits.length ? `<div class="row wrap mt-s" style="gap:6px">${p.traits.map((t) => chip(TRAITS[t].icon + ' ' + TRAITS[t].name, TRAITS[t].bad ? 'bad' : 'on')).join('')}</div>` : ''}`;
+  } else if (tab === 'vestuario') {
+    const squad = (G.squad || []).slice();
+    const comp = competitorFor(G);
+    const me = { name: displayName(p), country: p.country, pos: p.pos, ovr: p.ovr, age: p.age, isMe: true };
+    const all = squad.concat([me]).sort((a, b) => b.ovr - a.ovr);
+    body = `<div class="small dim" style="margin-bottom:8px">Plantilla del ${esc(mainClub(G.club).name)}. ${comp ? 'Te disputa el puesto <b>' + esc(comp.name) + '</b>.' : ''}</div>
+      <div class="tablewrap"><table style="min-width:0"><thead><tr><th class="num">Med</th><th>Jugador</th><th>Pos</th><th class="num">Edad</th></tr></thead><tbody>
+      ${all.map((t) => {
+        const cc = COUNTRY_BY_CODE[t.country];
+        const mark = t.isMe ? 'background:#0f2419' : (comp && t === comp ? 'background:#221c0d' : '');
+        return `<tr style="${mark}"><td class="num b">${t.ovr}</td>
+          <td class="${t.isMe ? 'b acc' : ''}" style="white-space:normal">${cc ? cc.flag : ''} ${esc(t.name)}${t.isNew ? ' <span class="gold">·nuevo</span>' : ''}</td>
+          <td class="dim2">${POS_BY_KEY[t.pos].short}</td><td class="num">${t.age}</td></tr>`;
+      }).join('')}
+      </tbody></table></div>`;
   } else if (tab === 'palmares') {
     const by = {};
     p.trophies.forEach((t) => { by[t.name] = (by[t.name] || 0) + 1; });

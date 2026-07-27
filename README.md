@@ -19,6 +19,7 @@ Doble clic y a jugar. Si se lo pasas a un amigo, le basta con ese archivo.
 | **Eventos** | 45+ situaciones con varias respuestas cada una |
 | **Momentos clave** | 11 escenas interactivas resueltas con tus atributos |
 | **Tramas** | 8 arcos narrativos que se desarrollan a lo largo de varias temporadas |
+| **Vestuario** | Plantilla con nombres que envejece, crece y ficha cada verano |
 
 ### Cómo funciona la simulación
 
@@ -32,6 +33,10 @@ Doble clic y a jugar. Si se lo pasas a un amigo, le basta con ese archivo.
 - **Todo es probabilidad.** Goles y asistencias salen de una Poisson que mezcla tu posición, tu
   media, el ataque de tu equipo y la dureza de la liga. Un delantero y un central no producen igual.
 - **Los porteros tienen su propia hoja**: paradas, goles encajados y porterías a cero.
+- **Tienes un rival por el puesto con nombre y apellidos.** Tus minutos no salen de un número
+  abstracto del club, sino del compañero concreto que juega donde tú: puedes caer en un equipo
+  donde el puesto está libre o detrás de un titular indiscutible. Ese compañero envejece, mejora,
+  se lesiona y acaba yéndose, y el club ficha para taparte.
 - **Los títulos dependen de dónde estés.** Ganar la Champions exige estar en un club que la juegue.
   Un equipo de Segunda pelea el ascenso y puede dar la campanada en la copa nacional.
 - **El Balón de Oro es muy difícil**: necesitas 88+ de media, números enormes y títulos grandes.
@@ -60,9 +65,9 @@ Medidos sobre 250 carreras simuladas de un jugador español:
 |---|---|
 | Media máxima alcanzada | mediana 78 · p90 86 · p99 92 |
 | Edad de retirada | mediana 36 |
-| Ganan un Balón de Oro | 1,2 % |
-| Ganan una Champions | 6 % |
-| Llegan a la selección absoluta | 60 % (con Afganistán: 96 %) |
+| Ganan un Balón de Oro | 2-3 % |
+| Ganan una Champions | 6-9 % |
+| Llegan a la selección absoluta | 65 % (con Afganistán: 96 %) |
 
 ---
 
@@ -87,6 +92,7 @@ src/
   data.events.js        eventos y momentos clave
   data.storylines.js    arcos narrativos largos
   engine.core.js        aleatoriedad, atributos, creación de jugador, escudos y camisetas en SVG
+  engine.squad.js       vestuario: compañeros con nombre, competencia por el puesto
   engine.season.js      simulación de temporada, clasificaciones, lesiones, evolución
   engine.market.js      opciones de inicio, ofertas, contratos, cesiones
   engine.awards.js      premios individuales, Balón de Oro, selección, legado
@@ -96,8 +102,10 @@ src/
 ### Sobre los datos
 
 Los clubes llevan **nivel de plantilla, prestigio, colores y división**, aproximados a la temporada
-2025/26. No hay plantillas jugador a jugador: lo que mueve la simulación es el nivel del club, no
-los nombres de sus futbolistas.
+2025/26. No hay plantillas reales jugador a jugador: quedarían obsoletas en un mes y no aportan a la
+simulación. Lo que sí hay es un vestuario generado y coherente con el nivel del club, con
+nombres acordes a la nacionalidad de cada futbolista, que da algo mucho más útil: un rival
+concreto por el puesto.
 
 Los escudos **no son los reales** (son material con copyright y romperían el archivo único sin
 conexión). En su lugar se genera un escudo vectorial con los colores y el patrón de cada club

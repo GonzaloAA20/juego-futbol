@@ -368,9 +368,13 @@ const EVENTS = [
   ],
 },
 {
-  id: 'rival_signing', cat: 'Club', w: 7, when: (G) => squadRole(P(G), CLUB(G)).key !== 'star',
-  title: 'Te fichan un competidor',
-  text: (G) => `El club paga una fortuna por un jugador de tu misma posición. Y viene con cartel de titular.`,
+  id: 'rival_signing', cat: 'Club', w: 7, when: (G) => competitorFor(G) && competitorGap(G) < 3,
+  title: 'El de tu puesto',
+  text: (G) => {
+    const c = competitorFor(G);
+    const cc = COUNTRY_BY_CODE[c.country];
+    return `${cc.flag} ${c.name}, ${c.age} años, ${c.ovr} de media, juega exactamente donde tú. El míster tiene que elegir y esta semana no te ha mirado ni una vez.`;
+  },
   opts: [
     { l: 'Pelear el puesto', d: 'A muerte.', e: { form: 10, growth: 1.08, mins: 0.98, morale: -4 } },
     { l: 'Pedir salir', d: 'Buscar minutos en otro sitio.', e: { trust: -10, flag: 'wantOut', note: 'Tu agente empieza a mover el mercado.' } },
@@ -402,6 +406,32 @@ const EVENTS = [
   opts: [
     { l: 'Aceptar, emocionado', d: '', e: { fanLove: 14, morale: 14, rep: 6, money: 0.4 } },
     { l: 'Todavía no me quiero despedir', d: '', e: { form: 8, morale: 4 } },
+  ],
+},
+
+{
+  id: 'rival_injured', cat: 'Club', w: 6, when: (G) => competitorFor(G) && competitorGap(G) < 0,
+  title: 'Se lesiona el titular',
+  text: (G) => {
+    const c = competitorFor(G);
+    return `${c.name} cae lesionado y se pierde media temporada. El puesto es tuyo durante unos meses. Lo que pase después depende de lo que hagas ahora.`;
+  },
+  opts: [
+    { l: 'Aprovechar cada minuto', d: 'La oportunidad de tu vida.', e: { mins: 1.22, form: 12, growth: 1.1, rating: 0.06 } },
+    { l: 'Ir a verle al hospital antes de nada', d: 'Persona antes que futbolista.', e: { mins: 1.12, morale: 8, trust: 6, attr: { men: 2 } } },
+    { l: 'Pedir renovación aprovechando el momento', d: 'Frío y calculador.', e: (G) => chance(0.55) ? { wageCut: 1.4, trust: -6, note: 'Cuela: te suben la ficha.' } : { trust: -14, fanLove: -6, note: 'Les parece feo. Y lo recuerdan.' } },
+  ],
+},
+{
+  id: 'squad_leader', cat: 'Vestuario', w: 6, when: (G) => P(G).age >= 26 && (G.squad || []).some((t) => t.age <= 19),
+  title: 'El más joven del vestuario',
+  text: (G) => {
+    const kid = (G.squad || []).filter((t) => t.age <= 19).sort((a, b) => b.pot - a.pot)[0];
+    return `${kid ? kid.name : 'Un chaval'} tiene ${kid ? kid.age : 18} años, acaba de subir y no le habla nadie. Tú te acuerdas perfectamente de cómo se siente eso.`;
+  },
+  opts: [
+    { l: 'Adoptarle', d: 'Llevarle a todos lados.', e: { trust: 8, morale: 8, fanLove: 5, legacyBonus: 35 } },
+    { l: 'Que se espabile como hice yo', d: '', e: { morale: -2 } },
   ],
 },
 

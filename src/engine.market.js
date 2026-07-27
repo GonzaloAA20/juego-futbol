@@ -171,7 +171,7 @@ function generateMarket(G, rep) {
   const opts = [];
 
   /* ¿Te quiere tu club? */
-  const role = squadRole(p, cur);
+  const role = squadRole(p, cur, competitorGap(G));
   const parentClub = cur.academy ? getClub(cur.parent) : cur;
   let clubWants = true;
   if (cur.academy) {

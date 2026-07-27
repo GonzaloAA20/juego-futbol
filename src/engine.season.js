@@ -109,7 +109,7 @@ function simulateSeason(G) {
   const fx = seasonFixtures(G, club, euroTier);
 
   /* --- minutos --- */
-  const role = squadRole(p, club);
+  const role = squadRole(p, club, competitorGap(G));
   let share = role.min;
   share *= 1 + (p.form / 260) + ((p.morale - 60) / 500) + ((p.trust - 55) / 320);
   share *= (mods.mins || 1);
@@ -366,7 +366,7 @@ function computeEuroSpots(G, cache) {
 /* ---------- Objetivos de temporada ---------- */
 function makeObjectives(G) {
   const p = G.player, club = G.club, lg = LEAGUES[leagueOfClub(G, club)];
-  const role = squadRole(p, club);
+  const role = squadRole(p, club, competitorGap(G));
   const objs = [];
   const expMins = Math.round(role.min * 34 * 78);
   objs.push({ id: 'mins', text: `Jugar más de ${Math.round(expMins / 90)} partidos completos`, target: expMins, kind: 'mins', reward: 1 });

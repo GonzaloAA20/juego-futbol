@@ -310,10 +310,12 @@ const fmtM = (v) => (v >= 100 ? Math.round(v) + ' M€' : v >= 10 ? v.toFixed(0)
 const fmtWage = (v) => (v >= 1 ? v.toFixed(1) + ' M€/año' : Math.round(v * 1000) + ' K€/año');
 
 /* ---------- Rol en el equipo ---------- */
-function squadRole(p, club) {
+function squadRole(p, club, compGap) {
   const gap = p.ovr - club.str;
   const young = p.age <= 19 ? -3.5 : p.age <= 21 ? -1.5 : 0;
-  const g = gap + young + (p.trust - 55) / 14;
+  // si hay un companiero concreto en tu puesto, el manda tanto como el nivel del club
+  const rival = compGap == null ? 0 : clamp(compGap * 0.45, -5, 5);
+  const g = gap + young + rival + (p.trust - 55) / 14;
   if (g >= 7) return { key: 'star', name: 'Estrella del equipo', min: 0.92 };
   if (g >= 2.5) return { key: 'key', name: 'Titular indiscutible', min: 0.82 };
   if (g >= -1.5) return { key: 'starter', name: 'Titular', min: 0.68 };
@@ -341,29 +343,64 @@ function ovrLabel(o) {
 
 /* ---------- Nombres genericos (rivales, companeros) ---------- */
 const NAME_POOL = {
-  ESP: ['Iker','Marcos','Álvaro','Pablo','Sergio','Nico','Hugo','Dani','Jorge','Adri'],
-  ENG: ['Jack','Harry','Callum','Reece','Tyler','Owen','Lewis','Kai','Ben','Josh'],
-  FRA: ['Enzo','Théo','Lucas','Mattéo','Noah','Kylian','Amine','Rayan','Nathan','Ilan'],
-  BRA: ['Gabriel','Matheus','João','Vinícius','Rodrigo','Lucas','Pedro','Kaio','Estêvão','Wesley'],
-  ARG: ['Facundo','Thiago','Valentín','Santiago','Máximo','Julián','Alejo','Franco','Lautaro','Benjamín'],
-  GER: ['Luca','Finn','Jonas','Noah','Elias','Til','Malik','Nico','Paul','Lennart'],
-  ITA: ['Matteo','Lorenzo','Alessandro','Riccardo','Giacomo','Simone','Andrea','Davide','Nicolò','Tommaso'],
-  DEF: ['Alex','Sam','Leo','Adam','Ryan','Omar','Yusuf','Nikola','Emre','Diego'],
+  ESP: ['Iker','Marcos','Álvaro','Pablo','Sergio','Nico','Hugo','Dani','Jorge','Adri','Unai','Mateo','Rubén','Álex','Javi','Carlos','Diego','Aitor','Bruno','Gonzalo','Íñigo','Raúl','Manu','Óscar'],
+  ENG: ['Jack','Harry','Callum','Reece','Tyler','Owen','Lewis','Kai','Ben','Josh','Alfie','Charlie','Dominic','Ethan','Finley','George','Jude','Leo','Mason','Oliver','Riley','Toby','Archie','Dylan'],
+  FRA: ['Enzo','Théo','Lucas','Mattéo','Noah','Kylian','Amine','Rayan','Nathan','Ilan','Hugo','Léo','Gabin','Adam','Yanis','Maxence','Sacha','Ibrahim','Malo','Ousmane','Tom','Aaron','Éliott','Nolan'],
+  BRA: ['Gabriel','Matheus','João','Vinícius','Rodrigo','Lucas','Pedro','Kaio','Estêvão','Wesley','Bruno','Caio','Davi','Enzo','Felipe','Guilherme','Igor','Murilo','Rafael','Thiago','Vitor','Yuri','Arthur','Léo'],
+  ARG: ['Facundo','Thiago','Valentín','Santiago','Máximo','Julián','Alejo','Franco','Lautaro','Benjamín','Agustín','Bautista','Ciro','Dylan','Ezequiel','Gastón','Ignacio','Joaquín','Lisandro','Nahuel','Ramiro','Tomás','Bruno','Emiliano'],
+  GER: ['Luca','Finn','Jonas','Noah','Elias','Til','Malik','Nico','Paul','Lennart','Ben','David','Emil','Felix','Jannik','Julian','Lars','Maximilian','Moritz','Niklas','Philipp','Tim','Yannick','Erik'],
+  ITA: ['Matteo','Lorenzo','Alessandro','Riccardo','Giacomo','Simone','Andrea','Davide','Nicolò','Tommaso','Federico','Gabriele','Leonardo','Luca','Marco','Mattia','Pietro','Samuele','Stefano','Filippo','Emanuele','Cristian','Gianluca','Antonio'],
+  DEF: ['Alex','Sam','Leo','Adam','Ryan','Omar','Yusuf','Nikola','Emre','Diego','Amir','Andrei','Denis','Filip','Ivan','Jakub','Karim','Luka','Marek','Mehmet','Milos','Petar','Stefan','Tomas'],
 };
 const SURNAME_POOL = {
-  ESP: ['García','Martínez','López','Sánchez','Fernández','Ruiz','Moreno','Navarro','Ortega','Cabrera'],
-  ENG: ['Wright','Hughes','Barnes','Doyle','Foster','Keane','Palmer','Wilson','Turner','Reid'],
-  FRA: ['Diallo','Bernard','Lemaire','Traoré','Rousseau','Fofana','Guerin','Mbaye','Perrin','Sylla'],
-  BRA: ['Silva','Souza','Oliveira','Costa','Ribeiro','Santos','Almeida','Barbosa','Nunes','Teixeira'],
-  ARG: ['Gómez','Rodríguez','Álvarez','Domínguez','Ferreyra','Sosa','Medina','Ibarra','Quiroga','Bustos'],
-  GER: ['Müller','Schmidt','Wagner','Becker','Hofmann','Krüger','Neumann','Fischer','Weber','Lang'],
-  ITA: ['Rossi','Ferrari','Esposito','Conti','Greco','Marchetti','Bruno','Villa','Rizzo','Gatti'],
-  DEF: ['Nowak','Petrov','Kovač','Yilmaz','Andersen','Novák','Horvat','Aliyev','Hassan','Bakker'],
+  ESP: ['García','Martínez','López','Sánchez','Fernández','Ruiz','Moreno','Navarro','Ortega','Cabrera','Vidal','Serrano','Iglesias','Herrera','Molina','Castro','Peña','Guerrero','Bermejo','Sanz','Rojas','Alonso','Prieto','Cortés'],
+  ENG: ['Wright','Hughes','Barnes','Doyle','Foster','Keane','Palmer','Wilson','Turner','Reid','Bennett','Carter','Dawson','Ellis','Fletcher','Gibson','Harper','Jennings','Lawson','Mercer','Norris','Preston','Shaw','Whitaker'],
+  FRA: ['Diallo','Bernard','Lemaire','Traoré','Rousseau','Fofana','Guerin','Mbaye','Perrin','Sylla','Aubert','Bonnet','Cissé','Dubois','Fournier','Girard','Keita','Lambert','Marchand','Ndiaye','Renaud','Sarr','Vasseur','Chevalier'],
+  BRA: ['Silva','Souza','Oliveira','Costa','Ribeiro','Santos','Almeida','Barbosa','Nunes','Teixeira','Cardoso','Duarte','Fonseca','Gomes','Lima','Machado','Moreira','Pereira','Rocha','Tavares','Vieira','Azevedo','Braga','Campos'],
+  ARG: ['Gómez','Rodríguez','Álvarez','Domínguez','Ferreyra','Sosa','Medina','Ibarra','Quiroga','Bustos','Acosta','Benítez','Cáceres','Escobar','Figueroa','Gallardo','Luna','Maldonado','Ojeda','Paredes','Ramírez','Silvestre','Vera','Zárate'],
+  GER: ['Müller','Schmidt','Wagner','Becker','Hofmann','Krüger','Neumann','Fischer','Weber','Lang','Bauer','Brandt','Engel','Frank','Günther','Hartmann','Keller','Lehmann','Meyer','Richter','Schäfer','Vogel','Winkler','Zimmermann'],
+  ITA: ['Rossi','Ferrari','Esposito','Conti','Greco','Marchetti','Bruno','Villa','Rizzo','Gatti','Barone','Caputo','De Luca','Fabbri','Galli','Longo','Mancini','Neri','Orlando','Palumbo','Riva','Sartori','Testa','Vitale'],
+  DEF: ['Nowak','Petrov','Kovač','Yilmaz','Andersen','Novák','Horvat','Aliyev','Hassan','Bakker','Berg','Christensen','Dimitrov','Eriksen','Farkas','Georgiev','Hansen','Jansen','Kaya','Larsen','Marković','Popescu','Simić','Varga'],
+};
+/* Para los países sin lista propia, nombre y apellido salen de la MISMA familia
+   regional: si no, aparecen cosas como "Andrei Larsen" con bandera checa. */
+const NAME_FAMILIES = {
+  eslavo:   { f: ['Andrei','Denis','Filip','Ivan','Jakub','Luka','Marek','Milos','Petar','Stefan','Tomas','Nikola','Vlad','Bojan'],
+              s: ['Nowak','Petrov','Kovač','Novák','Horvat','Marković','Popescu','Simić','Dimitrov','Georgiev','Varga','Farkas','Jurić','Stanković'] },
+  nordico:  { f: ['Emil','Kasper','Mathias','Oskar','Rasmus','Viktor','Elias','Jonas','Henrik','Sander','Even','Alfons'],
+              s: ['Andersen','Christensen','Eriksen','Hansen','Larsen','Berg','Nilsen','Lindqvist','Dahl','Sørensen','Bakke','Holm'] },
+  turco:    { f: ['Emre','Mehmet','Kaan','Arda','Burak','Cenk','Halil','Ozan','Yusuf','Berkay','Kerem','Umut'],
+              s: ['Yilmaz','Kaya','Demir','Şahin','Çelik','Aydın','Öztürk','Arslan','Doğan','Kılıç','Aslan','Koç'] },
+  arabe:    { f: ['Omar','Karim','Amir','Youssef','Bilal','Hamza','Tarek','Rami','Ziad','Nabil','Sami','Anas'],
+              s: ['Hassan','Nasser','Haddad','Mansour','Aziz','Barakat','Khalil','Saleh','Rahmani','Chahine','Tahir','Amrani'] },
+  africano: { f: ['Ibrahim','Moussa','Cheikh','Lamine','Sekou','Bakary','Kwame','Chidi','Musa','Abdoulaye','Serge','Emeka'],
+              s: ['Traoré','Diallo','Ndiaye','Keita','Sarr','Kone','Mensah','Okonkwo','Camara','Bamba','Owusu','Nwankwo'] },
+  neerland: { f: ['Daan','Sven','Ruben','Bram','Thijs','Jesse','Stijn','Lars','Joris','Timo'],
+              s: ['Bakker','Jansen','De Vries','Van Dijk','Visser','Meijer','Smit','Bos','Kuiper','Van Leeuwen'] },
+  asiatico: { f: ['Sota','Ren','Haruto','Minjun','Jihoon','Kenta','Riku','Seojun','Yuto','Daiki'],
+              s: ['Tanaka','Sato','Yamamoto','Kim','Park','Lee','Nakamura','Watanabe','Choi','Ito'] },
+};
+/* Qué familia le toca a cada país sin lista propia */
+const COUNTRY_FAMILY = {
+  NED: 'neerland', BEL: 'neerland', SUR: 'neerland', CUW: 'neerland',
+  TUR: 'turco', AZE: 'turco', KAZ: 'turco', UZB: 'turco',
+  MAR: 'arabe', ALG: 'arabe', TUN: 'arabe', EGY: 'arabe', LBY: 'arabe', KSA: 'arabe',
+  QAT: 'arabe', UAE: 'arabe', IRQ: 'arabe', JOR: 'arabe', SYR: 'arabe', LBN: 'arabe', PLE: 'arabe',
+  JPN: 'asiatico', KOR: 'asiatico', CHN: 'asiatico', VIE: 'asiatico', THA: 'asiatico',
+  DEN: 'nordico', NOR: 'nordico', SWE: 'nordico', FIN: 'nordico', ISL: 'nordico', FRO: 'nordico',
 };
 function randomName(cc) {
-  const f = NAME_POOL[cc] || NAME_POOL.DEF;
-  const s = SURNAME_POOL[cc] || SURNAME_POOL.DEF;
-  return pick(f) + ' ' + pick(s);
+  if (NAME_POOL[cc]) return pick(NAME_POOL[cc]) + ' ' + pick(SURNAME_POOL[cc]);
+  const country = COUNTRY_BY_CODE[cc];
+  let key = COUNTRY_FAMILY[cc];
+  if (!key && country) {
+    key = country.confed === 'CAF' ? 'africano'
+      : country.confed === 'AFC' ? 'arabe'
+        : country.confed === 'UEFA' ? 'eslavo' : null;
+  }
+  const fam = NAME_FAMILIES[key];
+  if (fam) return pick(fam.f) + ' ' + pick(fam.s);
+  return pick(NAME_POOL.DEF) + ' ' + pick(SURNAME_POOL.DEF);
 }
 
 /* ---------- Fase de eliminatoria alcanzada ---------- */

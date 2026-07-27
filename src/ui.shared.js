@@ -51,7 +51,7 @@ function hud(G, compact) {
   const p = G.player, c = G.club;
   const lg = LEAGUES[leagueOfClub(G, c)];
   const country = COUNTRY_BY_CODE[p.country];
-  const role = squadRole(p, c);
+  const role = squadRole(p, c, typeof competitorGap === 'function' ? competitorGap(G) : 0);
   return `<div class="card hud">
     <div class="row between wrap" style="gap:14px">
       <div class="row" style="gap:13px;min-width:0">
@@ -142,6 +142,7 @@ function saveGame(G) {
       world: G.world, euro: G.euro, euroPool: G.euroPool, mods: G.mods,
       objectives: G.objectives, step: G.step, queue: serializeQueue(G.queue),
       seasonFeed: G.seasonFeed, history: G.player.history,
+      squad: G.squad, squadClubId: G.squadClubId,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
@@ -161,6 +162,7 @@ function loadGame() {
       mods: d.mods || freshMods(), objectives: d.objectives || [],
       step: d.step || 'season', queue: deserializeQueue(d.queue || []),
       seasonFeed: d.seasonFeed || [],
+      squad: d.squad || null, squadClubId: d.squadClubId || null,
     };
     // sanear
     if (!G.club) return null;

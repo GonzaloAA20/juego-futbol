@@ -1874,9 +1874,13 @@ const EVENTS = [
   ],
 },
 {
-  id: 'rival_signing', cat: 'Club', w: 7, when: (G) => squadRole(P(G), CLUB(G)).key !== 'star',
-  title: 'Te fichan un competidor',
-  text: (G) => `El club paga una fortuna por un jugador de tu misma posición. Y viene con cartel de titular.`,
+  id: 'rival_signing', cat: 'Club', w: 7, when: (G) => competitorFor(G) && competitorGap(G) < 3,
+  title: 'El de tu puesto',
+  text: (G) => {
+    const c = competitorFor(G);
+    const cc = COUNTRY_BY_CODE[c.country];
+    return `${cc.flag} ${c.name}, ${c.age} años, ${c.ovr} de media, juega exactamente donde tú. El míster tiene que elegir y esta semana no te ha mirado ni una vez.`;
+  },
   opts: [
     { l: 'Pelear el puesto', d: 'A muerte.', e: { form: 10, growth: 1.08, mins: 0.98, morale: -4 } },
     { l: 'Pedir salir', d: 'Buscar minutos en otro sitio.', e: { trust: -10, flag: 'wantOut', note: 'Tu agente empieza a mover el mercado.' } },
@@ -1908,6 +1912,32 @@ const EVENTS = [
   opts: [
     { l: 'Aceptar, emocionado', d: '', e: { fanLove: 14, morale: 14, rep: 6, money: 0.4 } },
     { l: 'Todavía no me quiero despedir', d: '', e: { form: 8, morale: 4 } },
+  ],
+},
+
+{
+  id: 'rival_injured', cat: 'Club', w: 6, when: (G) => competitorFor(G) && competitorGap(G) < 0,
+  title: 'Se lesiona el titular',
+  text: (G) => {
+    const c = competitorFor(G);
+    return `${c.name} cae lesionado y se pierde media temporada. El puesto es tuyo durante unos meses. Lo que pase después depende de lo que hagas ahora.`;
+  },
+  opts: [
+    { l: 'Aprovechar cada minuto', d: 'La oportunidad de tu vida.', e: { mins: 1.22, form: 12, growth: 1.1, rating: 0.06 } },
+    { l: 'Ir a verle al hospital antes de nada', d: 'Persona antes que futbolista.', e: { mins: 1.12, morale: 8, trust: 6, attr: { men: 2 } } },
+    { l: 'Pedir renovación aprovechando el momento', d: 'Frío y calculador.', e: (G) => chance(0.55) ? { wageCut: 1.4, trust: -6, note: 'Cuela: te suben la ficha.' } : { trust: -14, fanLove: -6, note: 'Les parece feo. Y lo recuerdan.' } },
+  ],
+},
+{
+  id: 'squad_leader', cat: 'Vestuario', w: 6, when: (G) => P(G).age >= 26 && (G.squad || []).some((t) => t.age <= 19),
+  title: 'El más joven del vestuario',
+  text: (G) => {
+    const kid = (G.squad || []).filter((t) => t.age <= 19).sort((a, b) => b.pot - a.pot)[0];
+    return `${kid ? kid.name : 'Un chaval'} tiene ${kid ? kid.age : 18} años, acaba de subir y no le habla nadie. Tú te acuerdas perfectamente de cómo se siente eso.`;
+  },
+  opts: [
+    { l: 'Adoptarle', d: 'Llevarle a todos lados.', e: { trust: 8, morale: 8, fanLove: 5, legacyBonus: 35 } },
+    { l: 'Que se espabile como hice yo', d: '', e: { morale: -2 } },
   ],
 },
 
@@ -2761,10 +2791,12 @@ const fmtM = (v) => (v >= 100 ? Math.round(v) + ' M€' : v >= 10 ? v.toFixed(0)
 const fmtWage = (v) => (v >= 1 ? v.toFixed(1) + ' M€/año' : Math.round(v * 1000) + ' K€/año');
 
 /* ---------- Rol en el equipo ---------- */
-function squadRole(p, club) {
+function squadRole(p, club, compGap) {
   const gap = p.ovr - club.str;
   const young = p.age <= 19 ? -3.5 : p.age <= 21 ? -1.5 : 0;
-  const g = gap + young + (p.trust - 55) / 14;
+  // si hay un companiero concreto en tu puesto, el manda tanto como el nivel del club
+  const rival = compGap == null ? 0 : clamp(compGap * 0.45, -5, 5);
+  const g = gap + young + rival + (p.trust - 55) / 14;
   if (g >= 7) return { key: 'star', name: 'Estrella del equipo', min: 0.92 };
   if (g >= 2.5) return { key: 'key', name: 'Titular indiscutible', min: 0.82 };
   if (g >= -1.5) return { key: 'starter', name: 'Titular', min: 0.68 };
@@ -2792,29 +2824,64 @@ function ovrLabel(o) {
 
 /* ---------- Nombres genericos (rivales, companeros) ---------- */
 const NAME_POOL = {
-  ESP: ['Iker','Marcos','Álvaro','Pablo','Sergio','Nico','Hugo','Dani','Jorge','Adri'],
-  ENG: ['Jack','Harry','Callum','Reece','Tyler','Owen','Lewis','Kai','Ben','Josh'],
-  FRA: ['Enzo','Théo','Lucas','Mattéo','Noah','Kylian','Amine','Rayan','Nathan','Ilan'],
-  BRA: ['Gabriel','Matheus','João','Vinícius','Rodrigo','Lucas','Pedro','Kaio','Estêvão','Wesley'],
-  ARG: ['Facundo','Thiago','Valentín','Santiago','Máximo','Julián','Alejo','Franco','Lautaro','Benjamín'],
-  GER: ['Luca','Finn','Jonas','Noah','Elias','Til','Malik','Nico','Paul','Lennart'],
-  ITA: ['Matteo','Lorenzo','Alessandro','Riccardo','Giacomo','Simone','Andrea','Davide','Nicolò','Tommaso'],
-  DEF: ['Alex','Sam','Leo','Adam','Ryan','Omar','Yusuf','Nikola','Emre','Diego'],
+  ESP: ['Iker','Marcos','Álvaro','Pablo','Sergio','Nico','Hugo','Dani','Jorge','Adri','Unai','Mateo','Rubén','Álex','Javi','Carlos','Diego','Aitor','Bruno','Gonzalo','Íñigo','Raúl','Manu','Óscar'],
+  ENG: ['Jack','Harry','Callum','Reece','Tyler','Owen','Lewis','Kai','Ben','Josh','Alfie','Charlie','Dominic','Ethan','Finley','George','Jude','Leo','Mason','Oliver','Riley','Toby','Archie','Dylan'],
+  FRA: ['Enzo','Théo','Lucas','Mattéo','Noah','Kylian','Amine','Rayan','Nathan','Ilan','Hugo','Léo','Gabin','Adam','Yanis','Maxence','Sacha','Ibrahim','Malo','Ousmane','Tom','Aaron','Éliott','Nolan'],
+  BRA: ['Gabriel','Matheus','João','Vinícius','Rodrigo','Lucas','Pedro','Kaio','Estêvão','Wesley','Bruno','Caio','Davi','Enzo','Felipe','Guilherme','Igor','Murilo','Rafael','Thiago','Vitor','Yuri','Arthur','Léo'],
+  ARG: ['Facundo','Thiago','Valentín','Santiago','Máximo','Julián','Alejo','Franco','Lautaro','Benjamín','Agustín','Bautista','Ciro','Dylan','Ezequiel','Gastón','Ignacio','Joaquín','Lisandro','Nahuel','Ramiro','Tomás','Bruno','Emiliano'],
+  GER: ['Luca','Finn','Jonas','Noah','Elias','Til','Malik','Nico','Paul','Lennart','Ben','David','Emil','Felix','Jannik','Julian','Lars','Maximilian','Moritz','Niklas','Philipp','Tim','Yannick','Erik'],
+  ITA: ['Matteo','Lorenzo','Alessandro','Riccardo','Giacomo','Simone','Andrea','Davide','Nicolò','Tommaso','Federico','Gabriele','Leonardo','Luca','Marco','Mattia','Pietro','Samuele','Stefano','Filippo','Emanuele','Cristian','Gianluca','Antonio'],
+  DEF: ['Alex','Sam','Leo','Adam','Ryan','Omar','Yusuf','Nikola','Emre','Diego','Amir','Andrei','Denis','Filip','Ivan','Jakub','Karim','Luka','Marek','Mehmet','Milos','Petar','Stefan','Tomas'],
 };
 const SURNAME_POOL = {
-  ESP: ['García','Martínez','López','Sánchez','Fernández','Ruiz','Moreno','Navarro','Ortega','Cabrera'],
-  ENG: ['Wright','Hughes','Barnes','Doyle','Foster','Keane','Palmer','Wilson','Turner','Reid'],
-  FRA: ['Diallo','Bernard','Lemaire','Traoré','Rousseau','Fofana','Guerin','Mbaye','Perrin','Sylla'],
-  BRA: ['Silva','Souza','Oliveira','Costa','Ribeiro','Santos','Almeida','Barbosa','Nunes','Teixeira'],
-  ARG: ['Gómez','Rodríguez','Álvarez','Domínguez','Ferreyra','Sosa','Medina','Ibarra','Quiroga','Bustos'],
-  GER: ['Müller','Schmidt','Wagner','Becker','Hofmann','Krüger','Neumann','Fischer','Weber','Lang'],
-  ITA: ['Rossi','Ferrari','Esposito','Conti','Greco','Marchetti','Bruno','Villa','Rizzo','Gatti'],
-  DEF: ['Nowak','Petrov','Kovač','Yilmaz','Andersen','Novák','Horvat','Aliyev','Hassan','Bakker'],
+  ESP: ['García','Martínez','López','Sánchez','Fernández','Ruiz','Moreno','Navarro','Ortega','Cabrera','Vidal','Serrano','Iglesias','Herrera','Molina','Castro','Peña','Guerrero','Bermejo','Sanz','Rojas','Alonso','Prieto','Cortés'],
+  ENG: ['Wright','Hughes','Barnes','Doyle','Foster','Keane','Palmer','Wilson','Turner','Reid','Bennett','Carter','Dawson','Ellis','Fletcher','Gibson','Harper','Jennings','Lawson','Mercer','Norris','Preston','Shaw','Whitaker'],
+  FRA: ['Diallo','Bernard','Lemaire','Traoré','Rousseau','Fofana','Guerin','Mbaye','Perrin','Sylla','Aubert','Bonnet','Cissé','Dubois','Fournier','Girard','Keita','Lambert','Marchand','Ndiaye','Renaud','Sarr','Vasseur','Chevalier'],
+  BRA: ['Silva','Souza','Oliveira','Costa','Ribeiro','Santos','Almeida','Barbosa','Nunes','Teixeira','Cardoso','Duarte','Fonseca','Gomes','Lima','Machado','Moreira','Pereira','Rocha','Tavares','Vieira','Azevedo','Braga','Campos'],
+  ARG: ['Gómez','Rodríguez','Álvarez','Domínguez','Ferreyra','Sosa','Medina','Ibarra','Quiroga','Bustos','Acosta','Benítez','Cáceres','Escobar','Figueroa','Gallardo','Luna','Maldonado','Ojeda','Paredes','Ramírez','Silvestre','Vera','Zárate'],
+  GER: ['Müller','Schmidt','Wagner','Becker','Hofmann','Krüger','Neumann','Fischer','Weber','Lang','Bauer','Brandt','Engel','Frank','Günther','Hartmann','Keller','Lehmann','Meyer','Richter','Schäfer','Vogel','Winkler','Zimmermann'],
+  ITA: ['Rossi','Ferrari','Esposito','Conti','Greco','Marchetti','Bruno','Villa','Rizzo','Gatti','Barone','Caputo','De Luca','Fabbri','Galli','Longo','Mancini','Neri','Orlando','Palumbo','Riva','Sartori','Testa','Vitale'],
+  DEF: ['Nowak','Petrov','Kovač','Yilmaz','Andersen','Novák','Horvat','Aliyev','Hassan','Bakker','Berg','Christensen','Dimitrov','Eriksen','Farkas','Georgiev','Hansen','Jansen','Kaya','Larsen','Marković','Popescu','Simić','Varga'],
+};
+/* Para los países sin lista propia, nombre y apellido salen de la MISMA familia
+   regional: si no, aparecen cosas como "Andrei Larsen" con bandera checa. */
+const NAME_FAMILIES = {
+  eslavo:   { f: ['Andrei','Denis','Filip','Ivan','Jakub','Luka','Marek','Milos','Petar','Stefan','Tomas','Nikola','Vlad','Bojan'],
+              s: ['Nowak','Petrov','Kovač','Novák','Horvat','Marković','Popescu','Simić','Dimitrov','Georgiev','Varga','Farkas','Jurić','Stanković'] },
+  nordico:  { f: ['Emil','Kasper','Mathias','Oskar','Rasmus','Viktor','Elias','Jonas','Henrik','Sander','Even','Alfons'],
+              s: ['Andersen','Christensen','Eriksen','Hansen','Larsen','Berg','Nilsen','Lindqvist','Dahl','Sørensen','Bakke','Holm'] },
+  turco:    { f: ['Emre','Mehmet','Kaan','Arda','Burak','Cenk','Halil','Ozan','Yusuf','Berkay','Kerem','Umut'],
+              s: ['Yilmaz','Kaya','Demir','Şahin','Çelik','Aydın','Öztürk','Arslan','Doğan','Kılıç','Aslan','Koç'] },
+  arabe:    { f: ['Omar','Karim','Amir','Youssef','Bilal','Hamza','Tarek','Rami','Ziad','Nabil','Sami','Anas'],
+              s: ['Hassan','Nasser','Haddad','Mansour','Aziz','Barakat','Khalil','Saleh','Rahmani','Chahine','Tahir','Amrani'] },
+  africano: { f: ['Ibrahim','Moussa','Cheikh','Lamine','Sekou','Bakary','Kwame','Chidi','Musa','Abdoulaye','Serge','Emeka'],
+              s: ['Traoré','Diallo','Ndiaye','Keita','Sarr','Kone','Mensah','Okonkwo','Camara','Bamba','Owusu','Nwankwo'] },
+  neerland: { f: ['Daan','Sven','Ruben','Bram','Thijs','Jesse','Stijn','Lars','Joris','Timo'],
+              s: ['Bakker','Jansen','De Vries','Van Dijk','Visser','Meijer','Smit','Bos','Kuiper','Van Leeuwen'] },
+  asiatico: { f: ['Sota','Ren','Haruto','Minjun','Jihoon','Kenta','Riku','Seojun','Yuto','Daiki'],
+              s: ['Tanaka','Sato','Yamamoto','Kim','Park','Lee','Nakamura','Watanabe','Choi','Ito'] },
+};
+/* Qué familia le toca a cada país sin lista propia */
+const COUNTRY_FAMILY = {
+  NED: 'neerland', BEL: 'neerland', SUR: 'neerland', CUW: 'neerland',
+  TUR: 'turco', AZE: 'turco', KAZ: 'turco', UZB: 'turco',
+  MAR: 'arabe', ALG: 'arabe', TUN: 'arabe', EGY: 'arabe', LBY: 'arabe', KSA: 'arabe',
+  QAT: 'arabe', UAE: 'arabe', IRQ: 'arabe', JOR: 'arabe', SYR: 'arabe', LBN: 'arabe', PLE: 'arabe',
+  JPN: 'asiatico', KOR: 'asiatico', CHN: 'asiatico', VIE: 'asiatico', THA: 'asiatico',
+  DEN: 'nordico', NOR: 'nordico', SWE: 'nordico', FIN: 'nordico', ISL: 'nordico', FRO: 'nordico',
 };
 function randomName(cc) {
-  const f = NAME_POOL[cc] || NAME_POOL.DEF;
-  const s = SURNAME_POOL[cc] || SURNAME_POOL.DEF;
-  return pick(f) + ' ' + pick(s);
+  if (NAME_POOL[cc]) return pick(NAME_POOL[cc]) + ' ' + pick(SURNAME_POOL[cc]);
+  const country = COUNTRY_BY_CODE[cc];
+  let key = COUNTRY_FAMILY[cc];
+  if (!key && country) {
+    key = country.confed === 'CAF' ? 'africano'
+      : country.confed === 'AFC' ? 'arabe'
+        : country.confed === 'UEFA' ? 'eslavo' : null;
+  }
+  const fam = NAME_FAMILIES[key];
+  if (fam) return pick(fam.f) + ' ' + pick(fam.s);
+  return pick(NAME_POOL.DEF) + ' ' + pick(SURNAME_POOL.DEF);
 }
 
 /* ---------- Fase de eliminatoria alcanzada ---------- */
@@ -2834,6 +2901,136 @@ function roundPhrase(x, hasGroups) {
 /* Como termina una seleccion en un torneo, en frase corregida */
 function stagePhrase(stage) {
   return stage.indexOf('eliminad') === 0 ? 'queda ' + stage : 'termina como ' + stage;
+}
+
+
+/* ===== engine.squad.js ===== */
+/* ============================================================
+   VESTUARIO: companieros con nombre que envejecen, crecen y se van
+   ============================================================
+   No son plantillas reales (eso quedaria obsoleto en un mes y no aporta
+   a la simulacion), pero si un vestuario coherente con el nivel del club:
+   te da un rival concreto por el puesto en vez de un numero abstracto. */
+
+/* Nombres ya ocupados: los del vestuario mas el apellido del propio jugador,
+   para que no acaben cuatro Ortega en la misma plantilla */
+function takenNames(G) {
+  const t = new Set();
+  if (G && G.player) t.add(displayName(G.player));
+  return t;
+}
+
+/* Reparto de la plantilla por lineas */
+const SQUAD_SHAPE = [
+  ['GK', 3], ['CB', 4], ['LB', 2], ['RB', 2],
+  ['DM', 2], ['CM', 3], ['AM', 2], ['LW', 2], ['RW', 2], ['ST', 3],
+];
+
+/* Nacionalidad de un fichaje: casi siempre local, y cuanto mas grande el club, mas extranjeros */
+function squadNationality(club) {
+  const local = COUNTRY_BY_CODE[club.country];
+  const foreignChance = clamp((club.str - 52) / 90, 0.05, 0.62);
+  if (!chance(foreignChance)) return local ? local.code : 'ESP';
+  const pool = COUNTRIES.filter((c) => c.code !== club.country && c.tier <= 5);
+  return pick(pool).code;
+}
+
+function makeTeammate(club, pos, ovrTarget, ageHint, taken) {
+  const cc = squadNationality(club);
+  const age = ageHint != null ? ageHint : clamp(Math.round(gauss(25.5, 4.2, 17, 37)), 17, 37);
+  // los jovenes de la plantilla estan por debajo de su techo, los veteranos ya han caido
+  let ovr = ovrTarget;
+  if (age <= 20) ovr -= ri(3, 9);
+  else if (age >= 33) ovr -= ri(1, 5);
+  // un vestuario con cuatro jugadores del mismo apellido canta muchísimo
+  let name = randomName(cc);
+  for (let t = 0; t < 25 && taken && taken.has(name); t++) name = randomName(cc);
+  if (taken) taken.add(name);
+  return {
+    name, country: cc, pos,
+    ovr: clamp(Math.round(ovr), 38, 95),
+    pot: clamp(Math.round(ovr + (age <= 21 ? ri(4, 14) : age <= 25 ? ri(0, 6) : 0)), 40, 97),
+    age,
+  };
+}
+
+/* Construye una plantilla acorde al nivel del club */
+function buildSquad(G, club) {
+  const base = club.str;
+  const squad = [];
+  const taken = takenNames(G);
+  SQUAD_SHAPE.forEach(([pos, n]) => {
+    for (let i = 0; i < n; i++) {
+      // El titular de cada puesto ronda el nivel del club, a veces por encima y a veces
+      // por debajo. Así el puesto que te toca varía de club en club en vez de ser
+      // siempre un muro: parte de la gracia es caer donde hay hueco.
+      const target = base + (i === 0 ? rf(-2, 3.5) : i === 1 ? rf(-5, 0) : rf(-11, -4));
+      squad.push(makeTeammate(club, pos, target, null, taken));
+    }
+  });
+  squad.sort((a, b) => b.ovr - a.ovr);
+  return squad;
+}
+
+/* Quien te disputa el puesto: el mejor companiero de tu posicion */
+function competitorFor(G) {
+  const p = G.player;
+  const squad = G.squad || [];
+  const same = squad.filter((t) => t.pos === p.pos);
+  if (!same.length) return null;
+  return same.reduce((a, b) => (b.ovr > a.ovr ? b : a));
+}
+
+/* Un anio mas para todo el vestuario */
+function ageSquad(G, club) {
+  const out = [];
+  const taken = takenNames(G);
+  (G.squad || []).forEach((t) => taken.add(t.name));
+  (G.squad || []).forEach((t) => {
+    t.age++;
+    // crecen o caen como el jugador, pero mas simple
+    if (t.age <= 28) t.ovr = clamp(t.ovr + Math.max(0, Math.round((t.pot - t.ovr) * rf(0.1, 0.32))), 38, 97);
+    else if (t.age >= 31) t.ovr = clamp(t.ovr - Math.round((t.age - 30) * rf(0.4, 1.3)), 30, 97);
+    // se retiran o los traspasan
+    const leaves = t.age >= 38 || (t.age >= 35 && chance(0.35)) || chance(0.16);
+    if (!leaves) out.push(t);
+  });
+  // fichajes para rellenar los huecos
+  SQUAD_SHAPE.forEach(([pos, n]) => {
+    const have = out.filter((t) => t.pos === pos).length;
+    for (let i = have; i < n; i++) {
+      const target = club.str + (i === 0 ? rf(-2, 3.5) : i === 1 ? rf(-5, 0) : rf(-11, -4));
+      const nt = makeTeammate(club, pos, target, null, taken);
+      nt.isNew = true;
+      out.push(nt);
+    }
+  });
+  out.sort((a, b) => b.ovr - a.ovr);
+  return out;
+}
+
+/* Sincroniza el vestuario con el club actual */
+function syncSquad(G) {
+  const club = G.club;
+  if (!G.squad || G.squadClubId !== club.id) {
+    G.squad = buildSquad(G, club);
+    G.squadClubId = club.id;
+    G.squad.forEach((t) => { t.isNew = false; });
+  } else {
+    G.squad = ageSquad(G, club);
+  }
+  // el fichaje estrella de la pretemporada, si lo hay
+  G.newRival = null;
+  const comp = competitorFor(G);
+  if (comp && comp.isNew && comp.ovr >= G.player.ovr - 2) G.newRival = comp;
+  return G.squad;
+}
+
+/* Cuanto te penaliza (o te beneficia) el companiero que tienes delante */
+function competitorGap(G) {
+  const comp = competitorFor(G);
+  if (!comp) return 0;
+  return G.player.ovr - comp.ovr;
 }
 
 
@@ -2949,7 +3146,7 @@ function simulateSeason(G) {
   const fx = seasonFixtures(G, club, euroTier);
 
   /* --- minutos --- */
-  const role = squadRole(p, club);
+  const role = squadRole(p, club, competitorGap(G));
   let share = role.min;
   share *= 1 + (p.form / 260) + ((p.morale - 60) / 500) + ((p.trust - 55) / 320);
   share *= (mods.mins || 1);
@@ -3206,7 +3403,7 @@ function computeEuroSpots(G, cache) {
 /* ---------- Objetivos de temporada ---------- */
 function makeObjectives(G) {
   const p = G.player, club = G.club, lg = LEAGUES[leagueOfClub(G, club)];
-  const role = squadRole(p, club);
+  const role = squadRole(p, club, competitorGap(G));
   const objs = [];
   const expMins = Math.round(role.min * 34 * 78);
   objs.push({ id: 'mins', text: `Jugar más de ${Math.round(expMins / 90)} partidos completos`, target: expMins, kind: 'mins', reward: 1 });
@@ -3412,7 +3609,7 @@ function generateMarket(G, rep) {
   const opts = [];
 
   /* ¿Te quiere tu club? */
-  const role = squadRole(p, cur);
+  const role = squadRole(p, cur, competitorGap(G));
   const parentClub = cur.academy ? getClub(cur.parent) : cur;
   let clubWants = true;
   if (cur.academy) {
@@ -3872,7 +4069,7 @@ function hud(G, compact) {
   const p = G.player, c = G.club;
   const lg = LEAGUES[leagueOfClub(G, c)];
   const country = COUNTRY_BY_CODE[p.country];
-  const role = squadRole(p, c);
+  const role = squadRole(p, c, typeof competitorGap === 'function' ? competitorGap(G) : 0);
   return `<div class="card hud">
     <div class="row between wrap" style="gap:14px">
       <div class="row" style="gap:13px;min-width:0">
@@ -3963,6 +4160,7 @@ function saveGame(G) {
       world: G.world, euro: G.euro, euroPool: G.euroPool, mods: G.mods,
       objectives: G.objectives, step: G.step, queue: serializeQueue(G.queue),
       seasonFeed: G.seasonFeed, history: G.player.history,
+      squad: G.squad, squadClubId: G.squadClubId,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
@@ -3982,6 +4180,7 @@ function loadGame() {
       mods: d.mods || freshMods(), objectives: d.objectives || [],
       step: d.step || 'season', queue: deserializeQueue(d.queue || []),
       seasonFeed: d.seasonFeed || [],
+      squad: d.squad || null, squadClubId: d.squadClubId || null,
     };
     // sanear
     if (!G.club) return null;
@@ -4324,6 +4523,7 @@ function startSeason(G, first) {
     G.mods.mins *= (p.startMinsMod || 1);
     G.mods.growth *= (p.startDev || 1);
   }
+  syncSquad(G);
   G.objectives = makeObjectives(G);
   G.seasonFeed = [];
   G.queue = buildQueue(G, first);
@@ -4429,7 +4629,8 @@ function screenBeat() {
 function screenPreseason() {
   const G = window.G, p = G.player, c = G.club;
   const lg = LEAGUES[leagueOfClub(G, c)];
-  const role = squadRole(p, c);
+  const role = squadRole(p, c, competitorGap(G));
+  const comp = competitorFor(G);
   const euro = G.euro[c.academy ? c.parent : c.id];
   screen(`${topbar(G)}${hud(G)}
   <div class="card">
@@ -4438,6 +4639,7 @@ function screenPreseason() {
     <div class="col" style="gap:8px">
       ${G.objectives.map((o) => `<div class="sub row between"><span class="small">${esc(o.text)}</span>${chip('+' + o.reward + ' PE', '')}</div>`).join('')}
     </div>
+    ${comp ? competitorCard(G, comp) : ''}
     <div class="row wrap mt" style="gap:6px">
       ${chip('Rol: ' + role.name, role.min >= 0.68 ? 'on' : 'warn')}
       ${euro ? chip('🌍 ' + contCompName(c.confed, euro), 'on') : ''}
@@ -4454,6 +4656,30 @@ function screenPreseason() {
     </div>
   </div>`);
 }
+function competitorCard(G, comp) {
+  const p = G.player;
+  const d = p.ovr - comp.ovr;
+  const cc = COUNTRY_BY_CODE[comp.country];
+  const verdict = d >= 4 ? ['El puesto es tuyo.', 'on']
+    : d >= -1 ? ['Estáis muy igualados. Se decide en el campo.', 'warn']
+      : d >= -6 ? ['Ahora mismo juega él.', 'warn']
+        : ['Te saca mucha diferencia. Vas a mirar desde el banquillo.', 'bad'];
+  return `<div class="sub mt">
+    <div class="tiny">Tu puesto</div>
+    <div class="row between mt-s" style="gap:10px">
+      <div class="row" style="gap:9px;min-width:0">
+        <div class="ovr" style="width:44px;height:44px;border-radius:13px"><b style="font-size:18px">${comp.ovr}</b></div>
+        <div style="min-width:0">
+          <div class="b small">${cc ? cc.flag : ''} ${esc(comp.name)}${comp.isNew ? ' <span class="gold">· fichaje</span>' : ''}</div>
+          <div class="small dim2">${comp.age} años · ${POS_BY_KEY[comp.pos].name}</div>
+        </div>
+      </div>
+      <div class="ovr ${ovrTier(p.ovr)}" style="width:44px;height:44px;border-radius:13px"><b style="font-size:18px">${p.ovr}</b></div>
+    </div>
+    <div class="small mt-s ${verdict[1] === 'bad' ? 'red' : verdict[1] === 'warn' ? 'gold' : 'acc'}">${verdict[0]}</div>
+  </div>`;
+}
+
 const PRESEASON = [
   { l: '🔥 Pretemporada a tope', d: 'Llegas fino como nunca. Riesgo de romperte antes de empezar.', e: { fitness: 12, growth: 1.1, injuryRisk: 1.25, form: 8 } },
   { l: '🧠 Trabajo táctico y vídeo', d: 'Te ganas al entrenador desde julio.', e: { trust: 10, attr: { men: 2 }, rating: 0.05 } },
@@ -4857,7 +5083,8 @@ function marketCard(G, o, i) {
   const c = o.club;
   const lg = LEAGUES[leagueOfClub(G, c)];
   const cc = COUNTRY_BY_CODE[c.country];
-  const role = squadRole(p, c);
+  const role = squadRole(p, c, competitorGap(G));
+  const comp = competitorFor(G);
   const euro = G.euro[c.academy ? c.parent : c.id];
   return `<button class="opt" data-act="mkOpt" data-i="${i}">
     <div class="row" style="gap:11px">
@@ -5027,7 +5254,7 @@ function showProfile(tab) {
   const c = p.career;
   const list = attrsFor(p.pos);
   const country = COUNTRY_BY_CODE[p.country];
-  const tabs = [['perfil', 'Perfil'], ['palmares', 'Palmarés'], ['historial', 'Historial'], ['liga', 'Mi liga']];
+  const tabs = [['perfil', 'Perfil'], ['vestuario', 'Vestuario'], ['palmares', 'Palmarés'], ['historial', 'Historial'], ['liga', 'Mi liga']];
   let body = '';
   if (tab === 'perfil') {
     body = `<div class="kitwrap">${kitSVG(country.kit.shirt, country.kit.trim, country.kit.ink, shirtName(p), p.number)}</div>
@@ -5041,6 +5268,21 @@ function showProfile(tab) {
         ${stat(c.trophies, 'Títulos')}${stat(p.nt.caps, 'Intern.')}${stat(fmtM(p.money || 0), 'Patrimonio')}
       </div>
       ${p.traits.length ? `<div class="row wrap mt-s" style="gap:6px">${p.traits.map((t) => chip(TRAITS[t].icon + ' ' + TRAITS[t].name, TRAITS[t].bad ? 'bad' : 'on')).join('')}</div>` : ''}`;
+  } else if (tab === 'vestuario') {
+    const squad = (G.squad || []).slice();
+    const comp = competitorFor(G);
+    const me = { name: displayName(p), country: p.country, pos: p.pos, ovr: p.ovr, age: p.age, isMe: true };
+    const all = squad.concat([me]).sort((a, b) => b.ovr - a.ovr);
+    body = `<div class="small dim" style="margin-bottom:8px">Plantilla del ${esc(mainClub(G.club).name)}. ${comp ? 'Te disputa el puesto <b>' + esc(comp.name) + '</b>.' : ''}</div>
+      <div class="tablewrap"><table style="min-width:0"><thead><tr><th class="num">Med</th><th>Jugador</th><th>Pos</th><th class="num">Edad</th></tr></thead><tbody>
+      ${all.map((t) => {
+        const cc = COUNTRY_BY_CODE[t.country];
+        const mark = t.isMe ? 'background:#0f2419' : (comp && t === comp ? 'background:#221c0d' : '');
+        return `<tr style="${mark}"><td class="num b">${t.ovr}</td>
+          <td class="${t.isMe ? 'b acc' : ''}" style="white-space:normal">${cc ? cc.flag : ''} ${esc(t.name)}${t.isNew ? ' <span class="gold">·nuevo</span>' : ''}</td>
+          <td class="dim2">${POS_BY_KEY[t.pos].short}</td><td class="num">${t.age}</td></tr>`;
+      }).join('')}
+      </tbody></table></div>`;
   } else if (tab === 'palmares') {
     const by = {};
     p.trophies.forEach((t) => { by[t.name] = (by[t.name] || 0) + 1; });

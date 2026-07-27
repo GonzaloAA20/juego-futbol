@@ -19,6 +19,7 @@ const SCRIPTS = [
   'data.events.js',
   'data.storylines.js',
   'engine.core.js',
+  'engine.squad.js',
   'engine.season.js',
   'engine.market.js',
   'engine.awards.js',
