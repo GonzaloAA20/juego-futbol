@@ -9,6 +9,32 @@ Doble clic y a jugar. Si se lo pasas a un amigo, le basta con ese archivo.
 
 ---
 
+## Cómo pasárselo a alguien
+
+La forma buena es publicarlo en **GitHub Pages**: sale un enlace público que cualquiera
+abre desde WhatsApp y juega al instante, sin cuentas ni descargas. El repositorio ya trae
+el despliegue automatizado en `.github/workflows/pages.yml`; solo faltan dos ajustes que
+hay que hacer a mano en GitHub:
+
+1. **Hacer público el repositorio.** Pages es gratis solo en repos públicos.
+   `Settings` → `General` → abajo del todo, `Change repository visibility` → `Public`.
+   Ojo: esto deja el código a la vista de cualquiera.
+2. **Activar Pages.** `Settings` → `Pages` → en `Source`, elegir **GitHub Actions**.
+
+A partir de ahí, cada vez que se suba algo a `main` el juego se reconstruye y se publica solo en:
+
+```
+https://gonzaloaa20.github.io/juego-futbol/
+```
+
+**En el móvil se puede instalar**: al abrir ese enlace, desde el menú del navegador
+(`Añadir a pantalla de inicio`) queda con su icono y se abre a pantalla completa, como una app.
+
+Si prefieres no hacer público el repositorio, la alternativa es mandar directamente el archivo
+`index.html`: funciona igual, pero en el móvil abrir un adjunto `.html` es incómodo.
+
+---
+
 ## Qué hay dentro
 
 | | |
@@ -44,6 +70,13 @@ Doble clic y a jugar. Si se lo pasas a un amigo, le basta con ese archivo.
 - **La selección depende de tu país.** Con España necesitas ser de los mejores del país; con
   Afganistán, jugando en una liga decente ya te llaman. Se simulan Mundial, Eurocopa, Copa América,
   Copa Africana, Copa Oro, Copa Asiática, Nations League, categorías inferiores y Juegos Olímpicos.
+
+### Pensado para el móvil
+
+Se juega con una mano y en vertical: nada mide menos de 42 px, los diálogos suben desde
+abajo como una hoja al alcance del pulgar, el botón de avanzar vive fijo en la parte inferior,
+se respetan las zonas seguras del iPhone y no hay desplazamiento lateral ni siquiera en
+pantallas de 320 px. Verificado jugando carreras completas a 320 y 360 px de ancho.
 
 ### Qué evita que se haga repetitivo
 

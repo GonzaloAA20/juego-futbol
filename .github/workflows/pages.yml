@@ -1,0 +1,62 @@
+name: Publicar el juego en GitHub Pages
+
+# Cada vez que se sube algo a la rama principal, se reconstruye index.html
+# desde src/ y se publica. El enlace resultante es público y no necesita cuenta.
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Si se encadenan varios pushes, que gane el último y no se pisen entre ellos.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Construir index.html desde src/
+        run: node build.mjs
+
+      - name: Comprobar que el JavaScript del juego es válido
+        run: |
+          node -e "
+            const fs = require('fs');
+            const html = fs.readFileSync('index.html', 'utf8');
+            if (!html.includes('id=\"app\"')) throw new Error('Falta el contenedor del juego');
+            const m = html.match(/<script>([\s\S]*)<\/script>/);
+            if (!m) throw new Error('No hay bloque de script');
+            new Function(m[1]);
+            console.log('index.html correcto (' + (html.length / 1024 | 0) + ' KB)');
+          "
+
+      - name: Preparar la carpeta a publicar
+        run: |
+          mkdir -p _site
+          cp index.html _site/index.html
+          cp index.html _site/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,6 +1,17 @@
 /* ---------- Base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+html {
+  background: #070b10;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+/* En móvil todo se toca: sin retardo de doble toque, sin destello gris al pulsar,
+   y sin que el rebote del scroll se lleve la página entera. */
+button, .opt, .pick, .tab, .plus, a, input, select, label {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
 :root {
   --bg: #070b10;
   --bg2: #0c1219;
@@ -33,6 +44,7 @@ body {
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
   overflow-x: hidden;
+  overscroll-behavior-y: contain;
 }
 h1, h2, h3, h4 { margin: 0; line-height: 1.2; font-weight: 800; letter-spacing: -.02em; }
 p { margin: 0 0 10px; }
@@ -47,7 +59,7 @@ a { color: var(--acc); }
 *::-webkit-scrollbar-thumb { background: #223140; border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
 *::-webkit-scrollbar-thumb:hover { background: #34495e; background-clip: padding-box; }
 
-#app { max-width: 1120px; margin: 0 auto; padding: 16px 14px 90px; }
+#app { max-width: 1120px; margin: 0 auto; padding: 16px 14px calc(90px + env(safe-area-inset-bottom)); }
 
 /* ---------- Utilidades ---------- */
 .row { display: flex; gap: 10px; align-items: center; }
@@ -86,6 +98,7 @@ a { color: var(--acc); }
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   background: var(--panel2); border: 1px solid var(--line2); color: var(--txt);
   padding: 11px 16px; border-radius: 11px; cursor: pointer; font-weight: 700; font-size: 14px;
+  min-height: 44px;
   transition: transform .08s ease, background .15s ease, border-color .15s ease, box-shadow .15s;
   text-align: center;
 }
@@ -102,14 +115,19 @@ a { color: var(--acc); }
 .btn.danger { border-color: #5a2731; color: #ff9b9b; background: #1c1015; }
 .btn.danger:hover { background: #2a161c; }
 .btn.wide { width: 100%; }
-.btn.sm { padding: 7px 11px; font-size: 12.5px; border-radius: 9px; }
+.btn.sm { padding: 7px 11px; font-size: 12.5px; border-radius: 9px; min-height: 36px; }
 
 /* ---------- Formularios ---------- */
 .field { display: flex; flex-direction: column; gap: 6px; }
 .input, .select {
   background: #0b131b; border: 1px solid var(--line2); color: var(--txt);
-  padding: 11px 12px; border-radius: 11px; font-size: 15px; width: 100%; outline: none;
+  padding: 12px; border-radius: 11px; font-size: 16px; width: 100%; outline: none;
+  min-height: 46px;
 }
+/* Las flechitas del campo numérico son inútiles con el dedo */
+.input[type=number]::-webkit-outer-spin-button,
+.input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .input:focus, .select:focus { border-color: var(--acc); box-shadow: 0 0 0 3px rgba(46,230,107,.13); }
 label.tiny { margin-bottom: 2px; }
 
@@ -139,6 +157,7 @@ label.tiny { margin-bottom: 2px; }
 .pick {
   background: #0e1721; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px;
   cursor: pointer; display: flex; align-items: center; gap: 10px; text-align: left; width: 100%;
+  min-height: 52px;
   transition: border-color .12s, background .12s, transform .08s;
 }
 .pick:hover { border-color: var(--line2); background: #142030; }
@@ -191,7 +210,7 @@ label.tiny { margin-bottom: 2px; }
 .bar.purple > i { background: linear-gradient(90deg, #6b4bb5, var(--purple)); }
 
 /* ---------- Estadísticas ---------- */
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); gap: 8px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 8px; }
 .stat { background: #0e1720; border: 1px solid var(--line); border-radius: 11px; padding: 9px 8px; text-align: center; }
 .stat b { display: block; font-size: 19px; font-weight: 900; letter-spacing: -.5px; }
 .stat span { font-size: 10.5px; color: var(--dim2); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
@@ -213,7 +232,8 @@ label.tiny { margin-bottom: 2px; }
 /* ---------- Tarjetas de decisión ---------- */
 .opt {
   width: 100%; text-align: left; background: #0e1721; border: 1px solid var(--line);
-  border-radius: 13px; padding: 13px 14px; cursor: pointer; transition: border-color .12s, background .12s, transform .08s;
+  border-radius: 13px; padding: 14px; cursor: pointer; min-height: 56px;
+  transition: border-color .12s, background .12s, transform .08s;
 }
 .opt:hover { border-color: var(--acc); background: #101f19; }
 .opt:active { transform: scale(.99); }
@@ -231,8 +251,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ---------- Pestañas ---------- */
 .tabs { display: flex; gap: 4px; background: #0c141d; border: 1px solid var(--line); border-radius: 12px; padding: 4px; overflow-x: auto; }
-.tab { flex: 1; padding: 8px 10px; border-radius: 9px; border: none; background: transparent; color: var(--dim);
-  cursor: pointer; font-weight: 700; font-size: 12.5px; white-space: nowrap; }
+.tab { flex: 1; padding: 9px 12px; border-radius: 9px; border: none; background: transparent; color: var(--dim);
+  cursor: pointer; font-weight: 700; font-size: 12.5px; white-space: nowrap; min-height: 40px; }
 .tab.on { background: var(--panel2); color: var(--txt); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 
 /* ---------- Modal ---------- */
@@ -266,14 +286,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   border: 1px solid var(--line); border-radius: 11px; }
 .skill .lab { width: 108px; flex: none; font-size: 12.5px; font-weight: 700; }
 .skill .val { width: 30px; text-align: right; font-weight: 900; font-variant-numeric: tabular-nums; }
-.plus { width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line2); background: #16212d;
-  cursor: pointer; font-weight: 900; font-size: 17px; line-height: 1; flex: none; }
+.plus { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--line2); background: #16212d;
+  cursor: pointer; font-weight: 900; font-size: 19px; line-height: 1; flex: none; }
 .plus:hover:not(:disabled) { background: #1d5c37; border-color: var(--acc); color: #fff; }
 .plus:disabled { opacity: .28; cursor: not-allowed; }
 
 /* ---------- Barra inferior ---------- */
 .actionbar {
-  position: sticky; bottom: 0; margin: 14px -14px -90px; padding: 12px 14px 18px;
+  position: sticky; bottom: 0; margin: 14px -14px -90px;
+  padding: 12px 14px calc(18px + env(safe-area-inset-bottom));
   background: linear-gradient(180deg, rgba(7,11,16,0) 0%, rgba(7,11,16,.93) 32%, var(--bg) 100%);
   z-index: 20;
 }
@@ -285,18 +306,64 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @keyframes spin { to { transform: rotate(360deg) } }
 
 /* ---------- Buscador país ---------- */
-.scroller { max-height: 340px; overflow-y: auto; padding-right: 4px; }
+.scroller { max-height: min(52vh, 400px); overflow-y: auto; padding-right: 4px; -webkit-overflow-scrolling: touch; }
 
 /* ---------- Responsive ---------- */
+/* ---------- Móvil ----------
+   En pantalla pequeña el modal deja de ser una ventana flotante y pasa a ser una
+   hoja que sube desde abajo: queda al alcance del pulgar y se cierra deslizando
+   la vista hacia el contenido, que es como se espera que funcione en un teléfono. */
+@media (max-width: 700px) {
+  .modal-bg { align-items: end; padding: 0; }
+  .modal {
+    width: 100%; max-width: none; max-height: 88vh;
+    border-radius: 22px 22px 0 0; border-bottom: 0;
+    padding: 4px 14px calc(20px + env(safe-area-inset-bottom));
+    animation: sheet .28s cubic-bezier(.2, .9, .3, 1.04) both;
+  }
+  .modal::before {
+    content: ''; display: block; width: 40px; height: 4px; border-radius: 4px;
+    background: #33465c; margin: 8px auto 14px;
+  }
+}
+@keyframes sheet { from { transform: translateY(100%) } to { transform: none } }
+
 @media (max-width: 640px) {
-  #app { padding: 12px 12px 90px; }
+  #app { padding: 12px 12px calc(96px + env(safe-area-inset-bottom)); }
   .grid.g4 { grid-template-columns: repeat(2, 1fr); }
   .grid.g3 { grid-template-columns: repeat(2, 1fr); }
   .ovr { width: 62px; height: 62px; border-radius: 17px; }
   .ovr b { font-size: 25px; }
   .brand h1 { font-size: 18px; }
+  .brand-logo { width: 40px; height: 40px; font-size: 21px; }
   .actionbar { margin-left: -12px; margin-right: -12px; }
+  .card { padding: 14px; }
+  .card + .card { margin-top: 10px; }
+  /* Los textos largos de eventos y tramas se leen mejor algo más grandes */
+  .card > p.dim, .modal p { font-size: 15px; line-height: 1.55; }
+  .opt .t { font-size: 15px; }
+  .opt .d { font-size: 13px; }
+  table { min-width: 0; font-size: 13.5px; }
+  th, td { padding: 9px 8px; }
+  .stats { grid-template-columns: repeat(3, 1fr); }
+  .kit { width: 190px; }
+  .skill { padding: 8px 10px; gap: 8px; }
+  .skill .lab { width: 84px; font-size: 12px; }
+  /* Con el dedo, 36 px se falla; en móvil todo lo pulsable sube a 42-44 */
+  .btn.sm { min-height: 40px; padding: 8px 12px; }
+  .plus { width: 42px; height: 42px; }
 }
 @media (max-width: 380px) {
   .grid.g3, .grid.g4 { grid-template-columns: 1fr 1fr; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .chip { font-size: 11px; padding: 3px 8px; }
+}
+/* Móvil en horizontal: el teclado y la barra comen mucho alto */
+@media (max-height: 480px) and (orientation: landscape) {
+  .scroller { max-height: 46vh; }
+  .modal { max-height: 92vh; }
+}
+/* Quien prefiere menos animación, menos animación */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

@@ -43,6 +43,10 @@ console.log(`index.html generado (${kb} KB)`);
 /* Variante para publicar como pagina alojada: sin <!doctype>, <html>, <head> ni <body>,
    porque el alojamiento envuelve el contenido en su propio esqueleto. */
 const hosted = `<title>El Camino · Simulador de carrera de fútbol</title>
+<meta name="theme-color" content="#070b10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
 /* El juego vive en una sola atmósfera, como el marcador de un estadio de noche.
    Se fija el fondo oscuro pase lo que pase con el tema del visor. */

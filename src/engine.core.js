@@ -398,6 +398,10 @@ function randomName(cc) {
       : country.confed === 'AFC' ? 'arabe'
         : country.confed === 'UEFA' ? 'eslavo' : null;
   }
+  // El resto de América habla español: tira de la lista argentina
+  if (!key && country && (country.confed === 'CONMEBOL' || country.confed === 'CONCACAF')) {
+    return pick(NAME_POOL.ARG) + ' ' + pick(SURNAME_POOL.ARG);
+  }
   const fam = NAME_FAMILIES[key];
   if (fam) return pick(fam.f) + ' ' + pick(fam.s);
   return pick(NAME_POOL.DEF) + ' ' + pick(SURNAME_POOL.DEF);
