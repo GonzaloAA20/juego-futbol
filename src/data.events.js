@@ -229,7 +229,13 @@ const EVENTS = [
   title: 'Una llamada que no debería existir',
   text: () => `Un director deportivo de otro club te llama directamente al móvil en pleno mes de febrero. Te dice que en verano vienen a por ti.`,
   opts: [
-    { l: 'Escuchar y seguir hablando', d: 'Si se filtra, arde todo.', e: (G) => chance(0.7) ? { morale: 8, flag: 'bigOffer', note: 'Nadie se entera. Tienes una puerta abierta.' } : { trust: -16, fanLove: -14, note: 'Se filtra. La afición te silba en su propio campo.' } },
+    { l: 'Escuchar y dar mi palabra', d: 'Si dices que sí, en verano te vas. Sin marcha atrás.',
+      tags: ['Te compromete', 'Riesgo de filtración'],
+      e: (G) => {
+        const c = suitorClub(G, 4);
+        if (chance(0.72) && c) return { morale: 8, note: commitTo(G, c, 'Diste tu palabra a mitad de temporada y el club lo dio por cerrado.') };
+        return { trust: -16, fanLove: -14, note: 'Se filtra antes de cerrarse nada. La afición te silba en su propio campo.' };
+      } },
     { l: 'Colgar y contárselo al club', d: 'Puntos de lealtad.', e: { trust: 12, fanLove: 8, trait: 'loyal' } },
   ],
 },
@@ -238,7 +244,12 @@ const EVENTS = [
   title: 'La oferta del petrodólar',
   text: () => `Llega una oferta mareante desde una liga con mucho dinero y poca competición. Es cinco veces tu sueldo. Tienes 27 años.`,
   opts: [
-    { l: 'Ir por el dinero', d: 'Tu carrera deportiva se congela.', e: (G) => { const c = pickW(clubsOf('KSA1').concat(clubsOf('QAT1'), clubsOf('UAE1')), (x) => x.str); G.pendingMove = c; return { money: 12, rep: -6, growth: 0.7, note: 'Tu agente empieza a negociar con el ' + c.name + '.' }; } },
+    { l: 'Ir por el dinero', d: 'Tu carrera deportiva se congela. Y ya no hay vuelta atrás.',
+      tags: ['Te compromete', 'Frena tu crecimiento'],
+      e: (G) => {
+        const c = pickW(clubsOf('KSA1').concat(clubsOf('QAT1'), clubsOf('UAE1')), (x) => x.str);
+        return { money: 12, rep: -6, growth: 0.7, note: commitTo(G, c, 'Firmaste el precontrato en enero. El dinero ya está en camino.') };
+      } },
     { l: 'Rechazarla', d: 'Todavía tienes cosas que ganar.', e: { morale: 5, fanLove: 6, growth: 1.05 } },
   ],
 },
@@ -395,7 +406,9 @@ const EVENTS = [
   title: 'Te venden sin avisar',
   text: (G) => `Te enteras por Twitter de que el club ha aceptado una oferta por ti. Nadie te ha llamado.`,
   opts: [
-    { l: 'Aceptar y salir con clase', d: '', e: { rep: 3, flag: 'forceMove' } },
+    { l: 'Aceptar y salir con clase', d: 'Te vas en verano al club que ha pagado.',
+      tags: ['Cambias de club'],
+      e: (G) => { const c = suitorClub(G, 3); return { rep: 3, note: c ? commitTo(G, c, 'El club aceptó la oferta y tú no te opusiste. Está hecho.') : 'La operación se cae y sigues aquí.' }; } },
     { l: 'Plantarme y negarme a firmar', d: 'Se pudre todo, pero mandas tú.', e: { trust: -20, fanLove: -12, morale: -6, rep: 5 } },
   ],
 },
@@ -546,8 +559,14 @@ const EVENTS = [
   title: 'Mercado de invierno',
   text: () => `Enero. Llega una oferta a mitad de temporada. Salir ahora significa romper el año por la mitad.`,
   opts: [
-    { l: 'Escuchar la oferta', d: '', e: { flag: 'winterMove', morale: 4, trust: -6, note: 'Tu cabeza ya está en otro sitio.' } },
-    { l: 'Terminar la temporada aquí', d: '', e: { trust: 8, fanLove: 6, form: 6 } },
+    { l: 'Aceptar y marcharme en enero', d: 'Rompes el año por la mitad y juegas media temporada allí.',
+      tags: ['Cambias de club YA'],
+      e: (G) => {
+        const c = suitorClub(G, 2);
+        if (!c) return { morale: -4, note: 'La oferta se cae en el último momento. Te quedas.' };
+        return { fanLove: -8, note: moveInWinter(G, c) };
+      } },
+    { l: 'Terminar la temporada aquí', d: 'Se respeta, y se nota en el vestuario.', e: { trust: 8, fanLove: 6, form: 6 } },
   ],
 },
 {
@@ -557,6 +576,246 @@ const EVENTS = [
   opts: [
     { l: 'Cogerlo', d: 'Presión máxima.', e: (G) => { P(G).number = pick([7, 9, 10, 1, 4]); return { rep: 8, fanLove: 6, rating: -0.04, form: 6, note: 'Ahora llevas el ' + P(G).number + '.' }; } },
     { l: 'Dejarlo libre por respeto', d: '', e: { fanLove: 6, morale: 4 } },
+  ],
+},
+
+/* ---------------- ETAPA: PROMESA (16-19) ---------------- */
+{
+  id: 'first_wage', cat: 'Promesa', w: 9, when: (G) => P(G).age <= 19,
+  title: 'Tu primer sueldo',
+  text: () => `Te ingresan la primera nómina de tu vida. No es una fortuna, pero para un chaval de tu edad es más dinero del que ha visto nunca nadie de tu familia.`,
+  opts: [
+    { l: 'Dárselo a mis padres', d: 'Ellos pagaron todos los viajes de niño.', e: { morale: 12, fanLove: 4, attr: { men: 2 } } },
+    { l: 'Comprarme el coche', d: 'Todo el vestuario lo va a ver.', e: { money: -0.05, morale: 8, rep: 3, trust: -4 } },
+    { l: 'No tocarlo', d: 'Guardarlo entero.', e: { money: 0.06, attr: { men: 1 } } },
+  ],
+},
+{
+  id: 'school', cat: 'Promesa', w: 8, when: (G) => P(G).age <= 18,
+  title: 'Los estudios',
+  text: () => `Estás en segundo de bachillerato y te comen los entrenamientos. El club te deja elegir: seguir compaginando o dejarlo y volcarte en el fútbol.`,
+  opts: [
+    { l: 'Dejar los estudios', d: 'Todo a una carta.', e: { growth: 1.12, morale: -4, sp: 1 } },
+    { l: 'Compaginar como sea', d: 'Duermes cinco horas.', e: { attr: { men: 3 }, fitness: -5, growth: 0.97 } },
+    { l: 'Bajar el ritmo del fútbol un año', d: 'Red de seguridad.', e: { growth: 0.9, morale: 8, mins: 0.92 } },
+  ],
+},
+{
+  id: 'first_agent', cat: 'Promesa', w: 8, when: (G) => P(G).age <= 19,
+  title: 'El primer representante',
+  text: () => `Un tipo con traje se presenta en el aparcamiento del campo con una carpeta y promesas. Dice que puede llevarte a Inglaterra en dos años.`,
+  opts: [
+    { l: 'Firmar con él', d: 'Más ofertas, pero se lleva su parte.', e: { flag: 'superAgent', money: -0.03, rep: 4, note: 'A partir de ahora te llegan más ofertas.' } },
+    { l: 'Que hable con mis padres', d: 'Prudente.', e: { attr: { men: 2 }, morale: 4 } },
+    { l: 'Mandarle a paseo', d: '', e: { morale: 2 } },
+  ],
+},
+{
+  id: 'youth_final', cat: 'Promesa', w: 7, when: (G) => P(G).age <= 19,
+  title: 'Final del juvenil',
+  text: () => `El juvenil juega una final y te quieren a ti, aunque ya entrenas con los mayores. El míster del primer equipo prefiere que descanses.`,
+  opts: [
+    { l: 'Jugar la final con mis amigos', d: 'Los de siempre.', e: { morale: 14, fanLove: 6, trust: -6, fitness: -4 } },
+    { l: 'Hacer caso al primer equipo', d: '', e: { trust: 10, morale: -5 } },
+  ],
+},
+
+/* ---------------- ETAPA: IRRUPCIÓN (20-22) ---------------- */
+{
+  id: 'hype', cat: 'Irrupción', w: 8, when: (G) => P(G).age >= 19 && P(G).age <= 23,
+  title: 'El nuevo fulanito',
+  text: (G) => `La prensa ha decidido que eres "el nuevo" de alguien. Comparaciones enormes, portadas, y una lupa encima que antes no tenías.`,
+  opts: [
+    { l: 'Alimentar el personaje', d: 'Vender humo también da dinero.', e: { rep: 12, trait: 'mediastar', rating: -0.05 } },
+    { l: 'Quitarle hierro en público', d: '', e: { morale: 6, trust: 5, rep: -2 } },
+    { l: 'Ponerme el listón aún más alto', d: '', e: { growth: 1.1, form: 8, morale: -6 } },
+  ],
+},
+{
+  id: 'first_big_contract', cat: 'Irrupción', w: 7, when: (G) => P(G).age >= 20 && P(G).age <= 24 && P(G).ovr >= 72,
+  title: 'El primer contrato gordo',
+  text: () => `Te ponen delante un contrato que multiplica por cinco lo que ganabas. Tu agente quiere cerrarlo ya. Tu padre te dice que no corras.`,
+  opts: [
+    { l: 'Firmar a lo grande', d: 'Cláusula alta: te ata.', e: (G) => { P(G).contract += 4; return { money: 1.2, morale: 10, trust: 6, note: 'Contrato largo. Salir de aquí ahora es más caro.' }; } },
+    { l: 'Firmar corto y renegociar en dos años', d: 'Apuestas por ti.', e: (G) => { P(G).contract = 2; return { rep: 3, morale: 4, note: 'Contrato corto: mandas tú dentro de dos años.' }; } },
+    { l: 'No firmar todavía', d: '', e: { trust: -8, morale: -2 } },
+  ],
+},
+{
+  id: 'loan_request', cat: 'Irrupción', w: 8, when: (G) => P(G).age >= 19 && P(G).age <= 23 && squadRole(P(G), CLUB(G), competitorGap(G)).min < 0.5,
+  title: 'Aquí no juegas',
+  text: (G) => `Llevas media temporada calentando. Tu agente te lo dice claro: o sales cedido, o pierdes dos años de tu vida en un banquillo.`,
+  opts: [
+    { l: 'Pedir salir cedido', d: 'Buscarás cesión en verano.', tags: ['Buscarás cesión'],
+      e: { flag: 'wantLoan', morale: 6, trust: -4, note: 'Tu agente moverá una cesión este verano.' } },
+    { l: 'Quedarme y pelearlo', d: 'Orgullo.', e: { form: 10, growth: 1.06, morale: -4 } },
+  ],
+},
+
+/* ---------------- ETAPA: CONSOLIDACIÓN (23-26) ---------------- */
+{
+  id: 'fatherhood', cat: 'Vida', w: 7, when: (G) => P(G).age >= 23 && P(G).age <= 33,
+  title: 'Vas a ser padre',
+  text: () => `Te lo dicen un martes por la mañana, antes de entrenar. No te enteras de nada de lo que dice el míster en la charla.`,
+  opts: [
+    { l: 'Cambiarlo todo por la familia', d: 'Otras prioridades.', e: { morale: 18, growth: 0.94, injuryRisk: 0.92 } },
+    { l: 'Usarlo como motor', d: 'Ahora juegas por alguien más.', e: { morale: 10, form: 12, attr: { men: 3 } } },
+  ],
+},
+{
+  id: 'house', cat: 'Dinero', w: 6, when: (G) => P(G).age >= 23 && P(G).wage >= 0.8,
+  title: 'Echar raíces',
+  text: (G) => `Llevas años de alquiler y maletas. Comprarte una casa aquí es decir en voz alta que te quedas.`,
+  opts: [
+    { l: 'Comprar la casa', d: 'Te asientas.', e: { money: -1.5, morale: 12, fanLove: 8, trust: 4 } },
+    { l: 'Seguir de alquiler', d: 'Mantener las opciones abiertas.', e: { morale: -2 } },
+  ],
+},
+{
+  id: 'peak_pressure', cat: 'Carrera', w: 7, when: (G) => P(G).age >= 24 && P(G).age <= 28 && P(G).ovr >= 76,
+  title: 'Ahora o nunca',
+  text: (G) => `Tienes ${P(G).age} años y estás en tu mejor momento. Si vas a dar el salto a un grande, la ventana es esta y dura dos o tres años.`,
+  opts: [
+    { l: 'Forzar la máquina para salir', d: 'Buscarás un grande sí o sí.', tags: ['Fuerzas tu salida'],
+      e: { flag: 'wantOut', trust: -12, morale: 6, note: 'Tu club sabe que quieres irte. No te van a retener.' } },
+    { l: 'Confiar en que llegue solo', d: '', e: { form: 6, trust: 4 } },
+    { l: 'Renunciar al salto y ser leyenda aquí', d: '', e: { fanLove: 16, trait: 'loyal', morale: 8, legacyBonus: 50 } },
+  ],
+},
+
+/* ---------------- ETAPA: PLENITUD Y VETERANÍA ---------------- */
+{
+  id: 'highest_paid', cat: 'Vestuario', w: 6, when: (G) => P(G).age >= 26 && P(G).ovr >= 80,
+  title: 'El mejor pagado',
+  text: (G) => `Se filtra la tabla de sueldos. Eres el que más cobra del vestuario, y por bastante. En el entrenamiento se nota el ambiente.`,
+  opts: [
+    { l: 'Asumirlo y rendir', d: 'Que hable el campo.', e: { form: 8, rating: 0.06, morale: -4 } },
+    { l: 'Bajarme el sueldo por el grupo', d: 'Gesto enorme.', e: { wageCut: 0.85, trust: 14, fanLove: 12, morale: 8, legacyBonus: 40 } },
+    { l: 'Que se fastidien', d: '', e: { morale: 4, trust: -8 } },
+  ],
+},
+{
+  id: 'bench_role', cat: 'Veteranía', w: 8, when: (G) => P(G).age >= 31,
+  title: 'La charla incómoda',
+  text: (G) => `El míster te llama al despacho. Quiere que asumas un rol de suplente de lujo: veinte minutos, liderazgo y ayudar a los jóvenes.`,
+  opts: [
+    { l: 'Aceptar con dignidad', d: 'Alargas la carrera.', e: { mins: 0.78, trust: 14, injuryRisk: 0.8, morale: -6, legacyBonus: 30 } },
+    { l: 'Negarme: yo soy titular', d: 'O juegas, o te vas.', e: { trust: -16, mins: 1.05, morale: 6, flag: 'wantOut' } },
+    { l: 'Pedir una última temporada como titular', d: '', e: (G) => chance(0.45) ? { mins: 1.1, trust: 4, note: 'Te da un año más de confianza.' } : { mins: 0.7, trust: -8, note: 'Se niega. Al banquillo.' } },
+  ],
+},
+{
+  id: 'life_after', cat: 'Veteranía', w: 6, when: (G) => P(G).age >= 32,
+  title: 'Y después, ¿qué?',
+  text: () => `Un compañero que se retiró hace dos años te cuenta que lo peor no fue dejar de jugar, fue el vacío del lunes siguiente. Se te queda grabado.`,
+  opts: [
+    { l: 'Empezar a preparar la retirada', d: 'Cabeza tranquila.', e: { morale: 10, attr: { men: 3 }, growth: 0.96 } },
+    { l: 'No pensarlo todavía', d: '', e: { form: 6, morale: -4 } },
+    { l: 'Meterme en un proyecto fuera del campo', d: '', e: { money: -0.5, morale: 8, rep: 5, legacyBonus: 40 } },
+  ],
+},
+{
+  id: 'farewell', cat: 'Últimas balas', w: 8, when: (G) => P(G).age >= 35,
+  title: 'La última vuelta',
+  text: (G) => `Con ${P(G).age} años, cada partido puede ser el último en muchos sitios. La gente empieza a despedirse de ti en campos que ni son el tuyo.`,
+  opts: [
+    { l: 'Anunciar que es mi última temporada', d: 'Homenajes en cada campo.', e: { fanLove: 18, rep: 8, morale: 12, mins: 1.06, legacyBonus: 60 } },
+    { l: 'No decir nada y seguir', d: '', e: { morale: 4 } },
+  ],
+},
+{
+  id: 'young_hunger', cat: 'Vestuario', w: 6, when: (G) => P(G).age >= 30,
+  title: 'Ya no corres como antes',
+  text: () => `En el partidillo del martes un chaval de veinte te deja sentado dos veces seguidas. Todo el vestuario se ríe. Tú también, por fuera.`,
+  opts: [
+    { l: 'Doblar el trabajo físico', d: 'Contra el reloj.', e: { attr: { pac: 2, phy: 2 }, fitness: -6, injuryRisk: 1.2 } },
+    { l: 'Jugar con la cabeza, no con las piernas', d: 'Reinventarse.', e: { attr: { men: 4, pos: 3 }, rating: 0.05 } },
+  ],
+},
+
+/* ---------------- MÁS COSAS QUE PUEDEN PASAR ---------------- */
+{
+  id: 'coach_faith', cat: 'Entrenador', w: 7,
+  title: 'Una charla a solas',
+  text: () => `El míster te para al salir del vestuario. "¿Tú qué quieres ser, un buen jugador o uno de los grandes?". No espera respuesta.`,
+  opts: [
+    { l: 'Pedirle trabajo específico', d: '', e: { growth: 1.12, sp: 1, trust: 8, fitness: -3 } },
+    { l: 'Decirle que ya lo sé', d: '', e: { morale: 4, trust: -3 } },
+  ],
+},
+{
+  id: 'fans_hostile', cat: 'Afición', w: 6, when: (G) => P(G).fanLove < 45,
+  title: 'Te silban los tuyos',
+  text: (G) => `Sales a calentar y suena un silbido desde el fondo. Es tu propio campo.`,
+  opts: [
+    { l: 'Aplaudirles de vuelta', d: 'Retador.', e: (G) => chance(0.4) ? { fanLove: 12, form: 10, note: 'Les ganas. Se da la vuelta el ambiente.' } : { fanLove: -14, morale: -8, note: 'Va a peor. Ahora te silban cada balón.' } },
+    { l: 'Callar y trabajar', d: '', e: { form: 8, rating: 0.05, morale: -5 } },
+    { l: 'Pedir salir del club', d: '', tags: ['Fuerzas tu salida'], e: { flag: 'wantOut', fanLove: -10, morale: 4 } },
+  ],
+},
+{
+  id: 'teammate_death', cat: 'Vida', w: 3,
+  title: 'Un vestuario roto',
+  text: () => `Un compañero sufre un accidente grave. La liga se para una jornada. En el vestuario no habla nadie.`,
+  opts: [
+    { l: 'Dedicarle la temporada', d: '', e: { morale: -8, form: 14, fanLove: 10, attr: { men: 3 }, legacyBonus: 30 } },
+    { l: 'Costear su recuperación', d: '', e: { money: -0.8, morale: 6, fanLove: 12, rep: 6 } },
+  ],
+},
+{
+  id: 'tactic_sacrifice', cat: 'Juego', w: 7, when: (G) => !isGK(G),
+  title: 'Sacrificarte por el equipo',
+  text: (G) => `El míster te pide un rol más sacrificado: correr para otros, tapar espaldas, renunciar a tus números.`,
+  opts: [
+    { l: 'Aceptar el sacrificio', d: 'Menos goles, más confianza.', e: { goals: 0.8, assists: 0.9, trust: 16, mins: 1.12, rating: 0.06 } },
+    { l: 'Negociar seguir siendo yo', d: '', e: { goals: 1.06, trust: -6 } },
+  ],
+},
+{
+  id: 'title_run', cat: 'Club', w: 6, when: (G) => CLUB(G).str >= 78,
+  title: 'Abril decisivo',
+  text: (G) => `Quedan seis jornadas, estáis a dos puntos del líder y llegan tres finales seguidas. Nadie duerme bien esta semana.`,
+  opts: [
+    { l: 'Tirar del equipo', d: 'A muerte.', e: { form: 14, rating: 0.08, fitness: -8, injuryRisk: 1.25 } },
+    { l: 'Dosificarme para llegar entero', d: '', e: { injuryRisk: 0.82, mins: 0.94, fitness: 6 } },
+  ],
+},
+{
+  id: 'national_snub', cat: 'Selección', w: 6, when: (G) => P(G).nt.caps > 0 && P(G).age >= 22,
+  title: 'Fuera de la lista',
+  text: (G) => `Sale la convocatoria y no estás. Un periodista te pregunta si te sientes injustamente tratado.`,
+  opts: [
+    { l: 'Explotar públicamente', d: 'Puentes quemados.', e: { rep: 6, morale: -6, note: 'El seleccionador toma nota. Y no para bien.' } },
+    { l: 'Responder con goles', d: '', e: { form: 12, rating: 0.07, growth: 1.04 } },
+    { l: 'Llamar al seleccionador en privado', d: '', e: { attr: { men: 2 }, morale: 4 } },
+  ],
+},
+{
+  id: 'referee_apology', cat: 'Sociedad', w: 5,
+  title: 'El árbitro se disculpa',
+  text: () => `Un árbitro te llama por teléfono para pedirte perdón por un penalti que no pitó y que os costó el partido. No es habitual.`,
+  opts: [
+    { l: 'Contarlo en prensa', d: '', e: { rep: 6, morale: 4, note: 'Se lía en el estamento arbitral.' } },
+    { l: 'Guardármelo', d: '', e: { attr: { men: 2 }, morale: 6 } },
+  ],
+},
+{
+  id: 'sponsor_clash', cat: 'Dinero', w: 5, when: (G) => P(G).rep >= 40,
+  title: 'Un patrocinador incómodo',
+  text: () => `Te ofrecen mucho dinero por una marca con muy mala fama. Tu agente dice que es dinero, y punto.`,
+  opts: [
+    { l: 'Firmar', d: '', e: { money: 1.4, rep: 4, fanLove: -10 } },
+    { l: 'Rechazarlo y explicar por qué', d: '', e: { fanLove: 12, rep: 6, morale: 6 } },
+  ],
+},
+{
+  id: 'training_ground_bust', cat: 'Entrenamiento', w: 6,
+  title: 'Instalaciones de otro siglo',
+  text: (G) => `El campo de entrenamiento está impracticable, el gimnasio es de los noventa y el fisio es el mismo para toda la plantilla.`,
+  opts: [
+    { l: 'Pagarme un preparador propio', d: '', e: { money: -0.4, growth: 1.1, injuryRisk: 0.85 } },
+    { l: 'Quejarme al club', d: '', e: (G) => chance(0.5) ? { growth: 1.06, trust: -4, note: 'Invierten algo. Algo es algo.' } : { trust: -10, note: 'Te toman por un quejica.' } },
+    { l: 'Adaptarme y callar', d: '', e: { injuryRisk: 1.12, trust: 5 } },
   ],
 },
 ];
@@ -677,7 +936,7 @@ const MOMENTS = [
   text: () => `Quedan cuatro horas. Un club grande ha puesto el dinero sobre la mesa. Tu club dice que no te vende. Tu agente te dice que fuerces la máquina.`,
   opts: [
     { l: 'Forzar la salida', a: ['men'], base: 0.5,
-      win: { text: 'El club cede a última hora. Te vas.', e: { rep: 6, morale: 10, flag: 'forceMove', note: 'Saldrás en el mercado de verano sí o sí.' } },
+      win: { text: 'El club cede a última hora. Está hecho.', e: (G) => { const c = suitorClub(G, 4); return { rep: 6, morale: 10, note: c ? commitTo(G, c, 'Forzaste la salida y el acuerdo quedó firmado.') : 'Se cierra el mercado con todo acordado de palabra.' }; } },
       lose: { text: 'Se cierra el mercado y sigues aquí. Con todos enfadados.', e: { trust: -18, fanLove: -14, morale: -10 } } },
     { l: 'Quedarme y darlo todo', a: ['men'], base: 0.85,
       win: { text: 'La afición te lo reconoce. Eres uno de los suyos.', e: { fanLove: 14, trust: 10, form: 8 } },
@@ -708,6 +967,250 @@ const MOMENTS = [
     { l: 'Marcar territorio', a: ['men', 'phy'], base: 0.55,
       win: { text: 'Le pasas por encima en los entrenamientos. Mensaje claro.', e: { form: 10, mins: 1.06 } },
       lose: { text: 'Queda feo y el vestuario se pone de su lado.', e: { trust: -10, fanLove: -8 } } },
+  ],
+},
+
+{
+  id: 'one_on_one', when: (G) => !isGK(G),
+  title: 'Mano a mano',
+  text: () => `Te plantas solo delante del portero. El estadio contiene el aire. Todo pasa en medio segundo.`,
+  opts: [
+    { l: 'Definir cruzado, a placer', a: ['sho', 'men'], base: 0.55,
+      win: { text: 'La colocas al palo largo. Impecable.', e: { extraGoals: 1, form: 10, rating: 0.05 } },
+      lose: { text: 'El portero adivina y la saca con el pie.', e: { form: -5 } } },
+    { l: 'Recortarle y marcar a puerta vacía', a: ['dri', 'pac'], base: 0.42,
+      win: { text: 'Le sientas y la metes andando. Golazo de los que se recuerdan.', e: { extraGoals: 1, form: 14, fanLove: 8, rep: 4 } },
+      lose: { text: 'Te la quita en el recorte. Ocasión clarísima fallada.', e: { form: -8, morale: -4 } } },
+    { l: 'Picarla por encima', a: ['sho', 'dri'], base: 0.38,
+      win: { text: 'Vaselina perfecta. La grada se levanta.', e: { extraGoals: 1, form: 12, rep: 6 } },
+      lose: { text: 'Se te va alta. Te llevas las manos a la cabeza.', e: { form: -7 } } },
+  ],
+},
+{
+  id: 'free_kick', when: (G) => !isGK(G),
+  title: 'Falta al borde del área',
+  text: () => `Falta peligrosa en el minuto 80. Hay tres compañeros sobre el balón, pero la grada corea tu nombre.`,
+  opts: [
+    { l: 'Pegarle yo', a: ['sho', 'men'], base: 0.28,
+      win: { text: '¡A la escuadra! De esas que salen una vez al año.', e: { extraGoals: 1, form: 16, fanLove: 12, rep: 8, trait: 'freekick' } },
+      lose: { text: 'Barrera. Córner y a otra cosa.', e: { form: -3 } } },
+    { l: 'Ponerla al área', a: ['pas'], base: 0.32,
+      win: { text: 'Centro medido y cabezazo dentro. Asistencia.', e: { assists: 1.15, form: 8, trust: 6 } },
+      lose: { text: 'Despeja el central sin problemas.', e: {} } },
+    { l: 'Jugarla en corto', a: ['pas', 'men'], base: 0.45,
+      win: { text: 'La jugada ensayada funciona y acabáis marcando.', e: { assists: 1.1, form: 7, trust: 8 } },
+      lose: { text: 'Se lía y perdéis el balón. El míster levanta las manos.', e: { trust: -5 } } },
+  ],
+},
+{
+  id: 'comeback_half', 
+  title: '0-2 al descanso',
+  text: () => `Vais perdiendo por dos en casa y os han pitado al entrar al túnel. En el vestuario nadie levanta la cabeza.`,
+  opts: [
+    { l: 'Levantar la voz yo', a: ['men'], base: 0.5,
+      win: { text: 'Hablas tú y el equipo sale con otra cara. Remontada.', e: { form: 16, trust: 12, fanLove: 10, trait: 'leader' } },
+      lose: { text: 'Nadie te sigue y acabáis 0-4. Peor imposible.', e: { form: -12, morale: -10, trust: -6 } } },
+    { l: 'Salir a arreglarlo en el campo', a: ['sho', 'dri', 'ref'], base: 0.4,
+      win: { text: 'Metes uno, das otro y acabáis empatando. Partidazo tuyo.', e: { extraGoals: 1, assists: 1.1, form: 14, rating: 0.08 } },
+      lose: { text: 'Lo intentas todo y no sale nada. Derrota fea.', e: { form: -8 } } },
+    { l: 'Ir partido a partido, sin dramas', a: ['men'], base: 0.7,
+      win: { text: 'Ordenados, sacáis un empate digno.', e: { form: 5, trust: 5 } },
+      lose: { text: 'Se os cae el partido del todo.', e: { form: -6 } } },
+  ],
+},
+{
+  id: 'cup_final', 
+  title: 'Final de copa',
+  clutch: true,
+  text: (G) => `Final. Estadio neutral, familia en la grada, y noventa minutos que pueden cambiar cómo te recuerdan aquí.`,
+  opts: [
+    { l: 'Jugar sin miedo', a: ['men', 'dri', 'ref'], base: 0.44,
+      win: { text: 'Partidazo tuyo y título. Te sacan a hombros.', e: { form: 20, fanLove: 20, rep: 14, morale: 16, rating: 0.1 } },
+      lose: { text: 'Te puede la ocasión y os pasan por encima.', e: { form: -14, morale: -12 } } },
+    { l: 'Sujetar el partido y esperar el error', a: ['men', 'pos', 'def'], base: 0.6,
+      win: { text: 'Partido feo, gol en el 88 y copa a casa.', e: { form: 14, fanLove: 14, trust: 10 } },
+      lose: { text: 'Aguantáis hasta que os meten uno. Subcampeones.', e: { form: -8, morale: -8 } } },
+  ],
+},
+{
+  id: 'ucl_debut', when: (G) => G.euro && G.euro[(G.club.parent || G.club.id)] === 'ucl' && G.player.career.apps < 120,
+  title: 'Tu primera noche de Champions',
+  text: () => `Suena el himno. Miras al cielo del estadio y te acuerdas de verlo por la tele en casa de tus padres.`,
+  opts: [
+    { l: 'Disfrutarlo y soltarme', a: ['men', 'dri'], base: 0.5,
+      win: { text: 'Te sale el partido de tu vida. Europa entera pregunta quién eres.', e: { rep: 16, form: 16, growth: 1.12, rating: 0.1 } },
+      lose: { text: 'Se te hace enorme. Cambio en el 60.', e: { morale: -10, trust: -6 } } },
+    { l: 'Agarrarme a lo que sé hacer', a: ['men', 'pas', 'pos'], base: 0.74,
+      win: { text: 'Sobrio y sin fallos. El míster te lo reconoce.', e: { trust: 10, rep: 6, growth: 1.05 } },
+      lose: { text: 'Pasas desapercibido en tu gran noche.', e: { morale: -5 } } },
+  ],
+},
+{
+  id: 'nt_debut_moment', when: (G) => G.player.nt.caps > 0 && G.player.nt.caps < 12,
+  title: 'Himno y escalofrío',
+  text: (G) => `${COUNTRY_BY_CODE[G.player.country].flag} Suena tu himno con la camiseta de tu selección puesta. En la grada están los tuyos.`,
+  opts: [
+    { l: 'Salir a comerme el campo', a: ['men', 'pac'], base: 0.48,
+      win: { text: 'Debut soñado. El seleccionador te señala como fijo.', e: { rep: 12, form: 14, morale: 14 } },
+      lose: { text: 'Nervios. Sales en el descanso.', e: { morale: -8 } } },
+    { l: 'Ir a lo seguro en mi debut', a: ['men'], base: 0.78,
+      win: { text: 'Cumples sin brillar. Habrá más días.', e: { rep: 5, morale: 8 } },
+      lose: { text: 'Ni fu ni fa. Tardarán en volver a llamarte.', e: { morale: -6 } } },
+  ],
+},
+{
+  id: 'ex_club', when: (G) => G.player.history.filter((h) => h.rating != null).length >= 3,
+  title: 'Contra tu ex equipo',
+  text: () => `Vuelves al campo donde te hiciste jugador, pero con la camiseta contraria. Te reciben con una mezcla de aplausos y silbidos.`,
+  opts: [
+    { l: 'Marcar y no celebrarlo', a: ['sho', 'men'], base: 0.42,
+      win: { text: 'Marcas, bajas la cabeza y pides perdón. Media grada te aplaude igual.', e: { extraGoals: 1, fanLove: 8, rep: 6, form: 12 } },
+      lose: { text: 'No aparece tu gol y te vas silbado.', e: { form: -6 } } },
+    { l: 'Marcar y celebrarlo a lo grande', a: ['sho'], base: 0.4,
+      win: { text: 'Golazo y celebración provocadora. Te odian y a ti te da igual.', e: { extraGoals: 1, form: 14, rep: 8, fanLove: -6 } },
+      lose: { text: 'Fallas y encima te pitan cada balón.', e: { form: -10, morale: -6 } } },
+  ],
+},
+{
+  id: 'relegation_final_day', when: (G) => G.club.str < 74,
+  title: 'Última jornada, todo en juego',
+  text: () => `Depende de vosotros: si ganáis os salváis, si perdéis bajáis. Cuarenta mil personas conteniendo la respiración.`,
+  clutch: true,
+  opts: [
+    { l: 'Echarme el equipo a la espalda', a: ['men', 'sho', 'ref'], base: 0.42,
+      win: { text: 'Decides tú el partido. Te llevan en volandas por la ciudad.', e: { extraGoals: 1, form: 18, fanLove: 22, rep: 8, legacyBonus: 40 } },
+      lose: { text: 'No sale. Descenso, y la imagen tuya llorando en el césped da la vuelta al país.', e: { form: -16, morale: -16 } } },
+    { l: 'Jugar sin riesgos y sufrir', a: ['men', 'def', 'pos'], base: 0.6,
+      win: { text: 'Un 0-0 horrible que sabe a gloria. Salvados.', e: { form: 10, fanLove: 12, morale: 10 } },
+      lose: { text: 'Un error tonto en el 85 os condena.', e: { form: -14, morale: -14 } } },
+  ],
+},
+{
+  id: 'gk_sweeper_moment', when: isGK,
+  title: 'Balón a la espalda de tu defensa',
+  text: () => `Pase largo por encima de tu línea. El delantero corre y tú tienes que decidir en dos segundos si sales de tu área.`,
+  opts: [
+    { l: 'Salir a cortar fuera del área', a: ['kic', 'men'], base: 0.5,
+      win: { text: 'Llegas antes y despejas de cabeza. Ovación.', e: { form: 10, trust: 8, rating: 0.05 } },
+      lose: { text: 'Llegas tarde, le derribas y ves la roja.', e: { form: -14, trust: -12, morale: -8 } } },
+    { l: 'Quedarme y achicar en la portería', a: ['pos', 'ref'], base: 0.62,
+      win: { text: 'Le achicas bien y le sacas el disparo con el cuerpo.', e: { form: 8, rating: 0.04 } },
+      lose: { text: 'Te la pica y entra. Gol evitable.', e: { form: -8, trust: -5 } } },
+  ],
+},
+{
+  id: 'gk_shootout', when: isGK,
+  title: 'Tanda de penaltis',
+  clutch: true,
+  text: () => `Se va a los penaltis. Tú contra cinco. Es literalmente para lo que llevas entrenando toda la vida.`,
+  opts: [
+    { l: 'Estudiar a cada lanzador', a: ['pos', 'men'], base: 0.4,
+      win: { text: 'Paras dos. Héroe absoluto. Título.', e: { form: 22, fanLove: 22, rep: 16, morale: 18, trait: 'clutch' } },
+      lose: { text: 'Los meten todos. Nada que reprocharte, pero duele igual.', e: { form: -8, morale: -10 } } },
+    { l: 'Jugar con la cabeza del rival', a: ['men'], base: 0.44,
+      win: { text: 'Bailoteo, gestos, y dos fallos suyos. Pasáis.', e: { form: 20, fanLove: 16, rep: 14 } },
+      lose: { text: 'Solo consigues que se motiven. Eliminados.', e: { form: -10, rep: -3 } } },
+    { l: 'Adivinar y volar', a: ['ref'], base: 0.33,
+      win: { text: 'Vuelo espectacular y una parada de portada.', e: { form: 18, rep: 12, morale: 14 } },
+      lose: { text: 'Te tiras al lado contrario una y otra vez.', e: { form: -8 } } },
+  ],
+},
+{
+  id: 'counter_attack', when: (G) => !isGK(G),
+  title: 'Contragolpe, tres contra dos',
+  text: () => `Robáis un balón y os lanzáis. Tres vosotros, dos ellos, cuarenta metros por delante y el estadio de pie.`,
+  opts: [
+    { l: 'Conducir hasta el final y disparar', a: ['pac', 'sho'], base: 0.4,
+      win: { text: 'Conduces sesenta metros y la clavas. Gol de highlight.', e: { extraGoals: 1, form: 14, rep: 6 } },
+      lose: { text: 'Te precipitas y la mandas fuera con dos compañeros solos.', e: { form: -8, trust: -6 } } },
+    { l: 'Abrir al compañero que llega solo', a: ['pas', 'men'], base: 0.66,
+      win: { text: 'Pase de gol perfecto. Abrazo y asistencia.', e: { assists: 1.15, form: 10, trust: 8 } },
+      lose: { text: 'El pase sale pasado y se pierde la ocasión.', e: { form: -4 } } },
+  ],
+},
+{
+  id: 'aerial_duel', when: (G) => !isGK(G),
+  title: 'Córner en el 93',
+  text: () => `Último córner del partido, empate a uno. Sube hasta el portero. Tú te vas al primer palo.`,
+  opts: [
+    { l: 'Atacar el primer palo', a: ['phy', 'men'], base: 0.32,
+      win: { text: 'Te anticipas y la peinas dentro. ¡Victoria en el último segundo!', e: { extraGoals: 1, form: 16, fanLove: 14 } },
+      lose: { text: 'Te gana la posición el central y despeja.', e: { form: -3 } } },
+    { l: 'Quedarme a la frontal para el rechace', a: ['sho', 'men'], base: 0.3,
+      win: { text: 'Te cae el rechace y la enchufas por abajo. Locura.', e: { extraGoals: 1, form: 15, rep: 5 } },
+      lose: { text: 'El rechace se va a la grada. Se acaba el partido.', e: {} } },
+    { l: 'Quedarme atrás por si hay contra', a: ['def', 'men'], base: 0.72,
+      win: { text: 'Cortas la contra que les habría dado el partido. Poco vistoso, muy valioso.', e: { trust: 10, rating: 0.05 } },
+      lose: { text: 'Aun así os cogen y encajáis en el descuento.', e: { form: -10, trust: -6 } } },
+  ],
+},
+{
+  id: 'provocation', 
+  title: 'Te buscan las cosquillas',
+  text: () => `Un rival lleva todo el partido diciéndote cosas al oído. En la última acción te dice algo sobre tu familia.`,
+  opts: [
+    { l: 'Contestarle con las manos', a: ['phy'], base: 0.2,
+      win: { text: 'Nadie lo ve y él se calla el resto del partido.', e: { form: 6 } },
+      lose: { text: 'Roja directa y tres partidos de sanción. Un desastre.', e: { form: -16, trust: -16, mins: 0.88, morale: -10 } } },
+    { l: 'Sonreírle y marcarle', a: ['men', 'sho'], base: 0.4,
+      win: { text: 'Le marcas y le señalas la boca. Silencio absoluto.', e: { extraGoals: 1, form: 14, rep: 8, attr: { men: 2 } } },
+      lose: { text: 'No consigues quitártelo de la cabeza en todo el partido.', e: { rating: -0.06, form: -6 } } },
+    { l: 'Pedir al árbitro que actúe', a: ['men'], base: 0.5,
+      win: { text: 'El árbitro le amonesta y se acabó el problema.', e: { form: 4, attr: { men: 1 } } },
+      lose: { text: 'El árbitro pasa y encima te dice que juegues.', e: { form: -5 } } },
+  ],
+},
+{
+  id: 'injury_final', 
+  title: 'Lesionado en una final',
+  clutch: true,
+  text: () => `Notas un pinchazo fuerte en el minuto 30 de una final. Puedes seguir apretando los dientes o pedir el cambio.`,
+  opts: [
+    { l: 'Aguantar hasta el final', a: ['men', 'phy'], base: 0.35,
+      win: { text: 'Aguantas cojo, marcas y ganáis. Épica pura.', e: { extraGoals: 1, form: 20, fanLove: 22, rep: 12, legacyBonus: 50, injuryRisk: 1.3 } },
+      lose: { text: 'Te rompes del todo en el 50. Te sacan en camilla y encima perdéis.', e: { injuryRisk: 2.2, morale: -14, form: -12 } } },
+    { l: 'Pedir el cambio y no arriesgar', a: ['men'], base: 0.85,
+      win: { text: 'Sales a tiempo. Es una molestia menor y estarás listo pronto.', e: { injuryRisk: 0.85, morale: -6 } },
+      lose: { text: 'Aun saliendo pronto, la resonancia no es buena.', e: { injuryRisk: 1.2, morale: -8 } } },
+  ],
+},
+{
+  id: 'pichichi_race', when: (G) => isAtk(G) && G.player.ovr >= 74,
+  title: 'La pelea por el Pichichi',
+  text: () => `Última jornada. Estás empatado a goles con otro delantero por el trofeo. Os pitan un penalti y hay otro compañero que también lo quiere.`,
+  opts: [
+    { l: 'Cogerlo yo', a: ['sho', 'men'], base: 0.66,
+      win: { text: 'Lo metes y te llevas el trofeo de goleador.', e: { extraGoals: 1, rep: 10, form: 12, morale: 10 } },
+      lose: { text: 'Lo fallas, pierdes el trofeo y encima el vestuario te mira raro.', e: { morale: -12, trust: -8, form: -10 } } },
+    { l: 'Cedérselo a mi compañero', a: ['men'], base: 0.8,
+      win: { text: 'Lo mete él y te abraza. El vestuario entero lo ve.', e: { trust: 14, fanLove: 10, morale: 8, legacyBonus: 25 } },
+      lose: { text: 'Lo falla. Ni trofeo ni gol.', e: { morale: -6 } } },
+  ],
+},
+{
+  id: 'manager_row', when: (G) => G.player.trust < 55,
+  title: 'Te cambian en el 55',
+  text: () => `Te sustituyen sin haber hecho nada mal. Al pasar por el banquillo, el míster ni te mira.`,
+  opts: [
+    { l: 'Tirar el peto y sentarme lejos', a: ['men'], base: 0.25,
+      win: { text: 'Al día siguiente hablan y te da la razón.', e: { trust: 6, rep: 3 } },
+      lose: { text: 'Multa interna y una semana con el filial.', e: { trust: -16, mins: 0.9, morale: -8 } } },
+    { l: 'Aplaudir y sentarme', a: ['men'], base: 0.85,
+      win: { text: 'Profesional. El míster lo valora y te repone.', e: { trust: 10, mins: 1.05 } },
+      lose: { text: 'Ni lo nota. Sigues fuera.', e: { morale: -4 } } },
+  ],
+},
+{
+  id: 'last_dance', when: (G) => G.player.age >= 34,
+  title: 'Puede que la última',
+  text: (G) => `Con ${G.player.age} años y el cuerpo justo, sales al campo sabiendo que un partido así igual no vuelve.`,
+  opts: [
+    { l: 'Vaciarme del todo', a: ['men', 'phy'], base: 0.45,
+      win: { text: 'Sale una actuación de las de antes. El campo entero de pie.', e: { form: 16, fanLove: 16, rep: 8, legacyBonus: 40 } },
+      lose: { text: 'Las piernas ya no dan. Cambio en el 60 y aplauso de consolación.', e: { morale: -8, fitness: -8 } } },
+    { l: 'Administrarme y leer el partido', a: ['men', 'pas', 'pos'], base: 0.72,
+      win: { text: 'Sin correr, lo controlas todo. Clase pura.', e: { rating: 0.08, trust: 8, form: 8 } },
+      lose: { text: 'Te pasa el partido por encima.', e: { rating: -0.06, form: -6 } } },
   ],
 },
 ];

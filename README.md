@@ -42,8 +42,8 @@ Si prefieres no hacer público el repositorio, la alternativa es mandar directam
 | **Clubes** | ~700, de 1ª y 2ª división de las ligas grandes y de 1ª de las demás |
 | **Ligas** | 49, con ascensos y descensos reales entre divisiones ligadas |
 | **Países** | 150+ seleccionables, con bandera, colores de equipación y nivel de selección |
-| **Eventos** | 45+ situaciones con varias respuestas cada una |
-| **Momentos clave** | 11 escenas interactivas resueltas con tus atributos |
+| **Eventos** | 77 situaciones con varias respuestas cada una |
+| **Momentos clave** | 27 escenas interactivas resueltas con tus atributos |
 | **Tramas** | 8 arcos narrativos que se desarrollan a lo largo de varias temporadas |
 | **Vestuario** | Plantilla con nombres que envejece, crece y ficha cada verano |
 
@@ -67,6 +67,17 @@ Si prefieres no hacer público el repositorio, la alternativa es mandar directam
   Un equipo de Segunda pelea el ascenso y puede dar la campanada en la copa nacional.
 - **El Balón de Oro es muy difícil**: necesitas 88+ de media, números enormes y títulos grandes.
   En torno al 1-3 % de las carreras consigue uno.
+- **Una gran temporada te abre puertas de verdad.** El mercado no mira solo tu media, sino tu
+  *cartel*: goles, premios, títulos y fama de la temporada. Ser máximo goleador de la Premier y
+  ganar la Eurocopa te pone en la agenda de la Juve o el United, aunque juegues en un equipo
+  mediano; el Madrid o el Barça asoman de vez en cuando, no siempre.
+- **Si te comprometes, te comprometes.** Dar tu palabra a un club a mitad de temporada cierra el
+  acuerdo: en verano firmas allí y no hay más opciones sobre la mesa.
+- **El mercado de invierno es de invierno.** Si aceptas irte en enero, te vas en enero: juegas
+  media temporada en cada club, con estadísticas separadas, y los títulos son los del equipo
+  donde acabas el año.
+- **Cesiones de uno o dos años** para los jóvenes que no juegan, con opción de compra si
+  respondes y vuelta obligatoria al club de origen cuando se acaban.
 - **La selección depende de tu país.** Con España necesitas ser de los mejores del país; con
   Afganistán, jugando en una liga decente ya te llaman. Se simulan Mundial, Eurocopa, Copa América,
   Copa Africana, Copa Oro, Copa Asiática, Nations League, categorías inferiores y Juegos Olímpicos.
@@ -77,6 +88,17 @@ Se juega con una mano y en vertical: nada mide menos de 42 px, los diálogos sub
 abajo como una hoja al alcance del pulgar, el botón de avanzar vive fijo en la parte inferior,
 se respetan las zonas seguras del iPhone y no hay desplazamiento lateral ni siquiera en
 pantallas de 320 px. Verificado jugando carreras completas a 320 y 360 px de ancho.
+
+### Se ve lo que te juegas
+
+Cada decisión viene etiquetada como **menor**, **importante** o **crucial**, y las cruciales
+llegan con el marco en rojo. Debajo de cada respuesta aparece lo que hace: *▲ Crecimiento*,
+*▼ Confianza del míster*, *▲ Riesgo de lesión*, *Te compromete*… Esas etiquetas se deducen del
+propio efecto en el código, así que ninguna opción puede prometer algo que luego no cumple.
+
+La edad ya no es solo un número: cada etapa (**Promesa**, **Irrupción**, **Consolidación**,
+**Plenitud**, **Veteranía**, **Últimas balas**) trae sus propias situaciones, del primer sueldo
+y los estudios a la charla en la que te ofrecen ser suplente de lujo.
 
 ### Qué evita que se haga repetitivo
 
@@ -99,6 +121,7 @@ Medidos sobre 250 carreras simuladas de un jugador español:
 | Media máxima alcanzada | mediana 78 · p90 86 · p99 92 |
 | Edad de retirada | mediana 36 |
 | Ganan un Balón de Oro | 2-3 % |
+| Traspasos que suben de nivel | 52 % |
 | Ganan una Champions | 6-9 % |
 | Llegan a la selección absoluta | 65 % (con Afganistán: 96 %) |
 

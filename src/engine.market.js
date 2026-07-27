@@ -123,150 +123,256 @@ function startingOptions(G) {
   return options.slice(0, 3);
 }
 
-/* ---------- Interes de un club por el jugador ---------- */
-function clubInterest(G, club, ctx) {
+/* ---------- Peso real del jugador en el mercado ----------
+   La media no lo es todo. Un pichichi de la Premier campeón de Europa con su
+   selección vale mucho más de lo que dice su media, y los clubes grandes lo saben.
+   Esto convierte una gran temporada en puertas que antes estaban cerradas. */
+function playerStature(G, ctx) {
   const p = G.player;
-  const lg = LEAGUES[leagueOfClub(G, club)];
-  if (!lg) return 0;
-  const cur = G.club;
-  if (cur && (club.id === cur.id || (cur.parent && club.id === cur.parent))) return 0;
-
-  const gap = p.ovr - club.str;
-  let s;
-  if (gap >= 0) s = 100 - Math.max(0, gap - 7) * 7;     // mejor que ellos: les encanta, pero no pueden pagarlo si les sacas mucho
-  else s = 78 + gap * 8;                                 // por debajo de su nivel: menos interes
-  if (p.age <= 21 && p.pot - p.ovr >= 6) s += 22 + (p.pot - p.ovr);
-  if (p.age <= 18) s -= 8;
-  if (p.age >= 31) s -= (p.age - 30) * 13;
-  if (p.age >= 35) s -= 30;
-  // pasados los 34, nadie ficha a alguien por debajo de su nivel
-  if (p.age >= 34 && p.ovr < club.str - 3) return 0;
-  s += (p.rep - 30) * 0.28;
-  s += ((ctx.rating || 6.6) - 6.6) * 34;
-  s += ((ctx.goals || 0) + (ctx.assists || 0) * 0.7) * 1.1;
-  if (ctx.mins < 500) s -= 22;
-  if (p.injuryHistory >= 3) s -= 8;
-  if (p.traits.includes('hothead')) s -= 5;
-  if (p.traits.includes('mediastar')) s += 6;
-
-  // los clubes de ligas fuertes son mas exigentes
-  s -= Math.max(0, lg.rep - 78) * 0.5;
-  // afinidad cultural / scouting
-  const country = COUNTRY_BY_CODE[p.country];
-  s += Math.log10(countryAffinity(country, club.country)) * 6;
-  // salto de liga: no se pasa de la nada a la Premier de un verano para otro
-  const curLg = cur ? LEAGUES[leagueOfClub(G, cur)] : null;
-  if (curLg) s -= Math.max(0, lg.rep - curLg.rep - 10) * 1.9;
-  // si acabas de llegar, ni el club te vende ni nadie se molesta en preguntar
-  if ((p.seasonsAtClub || 0) < 1) s -= 16;
-  return clamp(s, 0, 130);
+  let b = 0;
+  b += clamp((p.rep - 40) * 0.12, -4, 8);                                    // fama acumulada
+  b += clamp((ctx.rating - 6.8) * 5, -6, 6);                                 // cómo has jugado
+  b += Math.min(6, ((ctx.goals || 0) + (ctx.assists || 0) * 0.7) * 0.18);    // números
+  b += Math.min(7, (ctx.awardPts || 0) * 0.3);                               // premios individuales
+  b += Math.min(6, (ctx.titlePts || 0) * 0.16);                              // títulos, club y selección
+  if (ctx.ntElite) b += 2.5;
+  if (p.age <= 22 && p.pot - p.ovr >= 8) b += 3;                             // proyección
+  if ((ctx.mins || 0) < 900) b -= 8;
+  if (p.age >= 32) b -= (p.age - 31) * 2.5;
+  if (p.traits.includes('mediastar')) b += 1.5;
+  return p.ovr + clamp(b, -12, 14);
 }
 
-/* ---------- Generar opciones de mercado tras la temporada ---------- */
+/* ---------- ¿Puede este club venir a por ti? ----------
+   Devuelve 0 si está fuera de tu alcance o si te queda pequeño, y si no, lo
+   probable que es que se interesen. */
+function clubFeasibility(G, club, ctx) {
+  const p = G.player;
+  const st = ctx.stature;
+  const cur = G.club;
+  if (cur && (club.id === cur.id || (cur.parent && club.id === cur.parent))) return 0;
+  const lg = LEAGUES[leagueOfClub(G, club)];
+  if (!lg) return 0;
+  if (club.str > st + 3) return 0;          // por encima de tu talla
+  if (club.str < st - 17) return 0;         // muy por debajo: ni ellos preguntan ni tú irías
+
+  // Tu nivel real sigue contando: por muy buena que sea la temporada, un 82
+  // no aterriza en una plantilla de 93 de un verano para otro.
+  let f = Math.exp(-Math.max(0, club.str - p.ovr - 4) / 5);
+  // Los clubes con más caché son selectivos con los que no tienen nombre todavía
+  f *= Math.exp(-Math.max(0, club.prestige - 76 - (p.rep - 42) * 0.8) / 20);
+  if (p.age >= 31) f *= Math.max(0.12, 1 - (p.age - 30) * 0.24);
+  if (p.age <= 18) f *= 0.5;
+  if ((ctx.mins || 0) < 700) f *= 0.35;
+  if (p.injuryHistory >= 4) f *= 0.8;
+  if (p.traits.includes('hothead')) f *= 0.88;
+  if (p.flags && p.flags.superAgent) f *= 1.3;
+  f *= Math.pow(countryAffinity(COUNTRY_BY_CODE[p.country], club.country), 0.18);
+  f *= 0.75 + lg.rep / 190;
+  return f;
+}
+
+/* ---------- Etapa de carrera: hace que la edad se note ---------- */
+function careerStage(age) {
+  if (age <= 18) return { key: 'promesa', name: 'Promesa', desc: 'Todo por demostrar.' };
+  if (age <= 21) return { key: 'irrupcion', name: 'Irrupción', desc: 'El momento de dar el salto.' };
+  if (age <= 25) return { key: 'consolidacion', name: 'Consolidación', desc: 'Toca confirmar lo que prometías.' };
+  if (age <= 29) return { key: 'plenitud', name: 'Plenitud', desc: 'Tus mejores años. Ahora o nunca.' };
+  if (age <= 33) return { key: 'veterania', name: 'Veteranía', desc: 'La experiencia empieza a pesar más que las piernas.' };
+  return { key: 'ultimasbalas', name: 'Últimas balas', desc: 'Cada temporada puede ser la última.' };
+}
+
+/* ---------- Generar el mercado de verano ---------- */
 function generateMarket(G, rep) {
   const p = G.player;
   const cur = G.club;
   const s = rep.stats;
-  const ctx = { rating: s.rating, goals: s.goals, assists: s.assists, mins: s.mins };
+  const lgName = rep.league ? rep.league.name : '';
+  const ctx = {
+    rating: s.rating, goals: s.goals, assists: s.assists, mins: s.mins,
+    awardPts: (G.lastAwards || []).reduce((a, x) => a + x.pts, 0),
+    titlePts: (rep.titles || []).concat(rep.ntTitles || [])
+      .reduce((a, t) => a + titlePoints(t.name, lgName), 0),
+    ntElite: p.nt.level === 'Absoluta' && (COUNTRY_BY_CODE[p.country] || {}).tier <= 2,
+  };
+  ctx.stature = playerStature(G, ctx);
+  G.lastStature = Math.round(ctx.stature);
   const opts = [];
 
-  /* ¿Te quiere tu club? */
+  /* --- 1. Palabra dada a mitad de temporada: aquí no se elige --- */
+  if (G.committedTo) {
+    const c = getClub(G.committedTo.clubId) || G.committedTo.club;
+    if (c) {
+      const nr = squadRole(p, c);
+      opts.push({
+        type: 'transfer', club: c, binding: true,
+        title: 'Firmar por el ' + c.name,
+        desc: G.committedTo.reason || 'Diste tu palabra en mitad de temporada. El acuerdo ya está cerrado y no hay marcha atrás.',
+        wage: wageFor(c, p, nr.key), years: p.age >= 32 ? ri(1, 2) : ri(3, 5),
+        tags: ['Acuerdo cerrado', nr.name],
+      });
+      G.committedTo = null;
+      return { options: opts, clubWants: false, binding: true, stature: ctx.stature };
+    }
+    G.committedTo = null;
+  }
+
+  /* --- 2. Cesión en curso --- */
+  if (p.loanFrom) {
+    const parent = getClub(p.loanFrom);
+    const boughtOut = ctx.stature >= cur.str + 2 && s.mins > 1500 && chance(0.55);
+    if ((p.loanYears || 0) >= 1) {
+      opts.push({
+        type: 'stay', club: cur,
+        title: 'Seguir cedido en el ' + cur.name,
+        desc: 'A la cesión le queda otro año. Sigues creciendo lejos de casa.',
+        wage: p.wage, years: 1, tags: ['Cesión en curso', squadRole(p, cur, competitorGap(G)).name],
+      });
+    }
+    if (boughtOut) {
+      const nr = squadRole(p, cur);
+      opts.push({
+        type: 'transfer', club: cur,
+        title: 'El ' + cur.name + ' ejecuta la opción de compra',
+        desc: 'Han visto suficiente. Te quieren en propiedad.',
+        wage: wageFor(cur, p, nr.key), years: ri(3, 5), tags: ['Traspaso definitivo', nr.name],
+      });
+    }
+    if (parent && (p.loanYears || 0) < 1) {
+      const pr = squadRole(p, parent);
+      opts.push({
+        type: 'return', club: parent,
+        title: 'Volver al ' + parent.name,
+        desc: pr.min >= 0.6
+          ? 'Se acabó la cesión y vuelves con otro cartel. Ahora sí cuentan contigo.'
+          : 'Se acabó la cesión y toca volver, te guste o no. Ahí sigue la competencia que dejaste.',
+        wage: wageFor(parent, p, pr.key), years: Math.max(1, p.contract), tags: ['Fin de cesión', pr.name],
+      });
+    }
+  }
+
+  /* --- 3. ¿Te quiere tu club? --- */
   const role = squadRole(p, cur, competitorGap(G));
   const parentClub = cur.academy ? getClub(cur.parent) : cur;
   let clubWants = true;
-  if (cur.academy) {
-    // ¿te suben al primer equipo?
-    const readiness = p.ovr - parentClub.str;
-    if (readiness >= -8 || (p.age >= 19 && readiness >= -13)) {
-      opts.push({
-        type: 'promote', club: parentClub,
-        title: 'Subir al primer equipo del ' + parentClub.name,
-        desc: 'El club te sube. Se acabó la cantera: ahora te mides con los mayores.',
-        wage: wageFor(parentClub, p, squadRole(p, parentClub).key), years: ri(3, 5),
-        tags: ['Sueño cumplido', squadRole(p, parentClub).name],
-      });
-    } else if (p.age >= 19) {
-      clubWants = false;
+  if (!p.loanFrom) {
+    if (cur.academy) {
+      const readiness = p.ovr - parentClub.str;
+      if (readiness >= -8 || (p.age >= 19 && readiness >= -13)) {
+        const nr = squadRole(p, parentClub);
+        opts.push({
+          type: 'promote', club: parentClub,
+          title: 'Subir al primer equipo del ' + parentClub.name,
+          desc: 'El club te sube. Se acabó la cantera: ahora te mides con los mayores.',
+          wage: wageFor(parentClub, p, nr.key), years: ri(3, 5),
+          tags: ['Sueño cumplido', nr.name],
+        });
+      } else if (p.age >= 19) {
+        clubWants = false;
+      } else {
+        opts.push({
+          type: 'stay', club: cur, title: 'Seguir en la cantera del ' + parentClub.name,
+          desc: 'Un año más de formación. Todavía no te ven listo.',
+          wage: Math.max(0.03, wageFor(cur, p, role.key) * 0.5), years: 1, tags: ['Paciencia'],
+        });
+      }
     } else {
-      opts.push({
-        type: 'stay', club: cur, title: 'Seguir en la cantera del ' + parentClub.name,
-        desc: 'Un año más de formación. Todavía no te ven listo.',
-        wage: Math.max(0.03, wageFor(cur, p, role.key) * 0.5), years: 1, tags: ['Paciencia'],
-      });
-    }
-  } else {
-    const keepScore = (p.ovr - cur.str) * 6 + (s.rating - 6.5) * 40 + (p.age <= 26 ? 15 : p.age >= 34 ? -30 : 0) + (s.mins > 900 ? 12 : -14);
-    clubWants = keepScore > -20;
-    if (clubWants) {
-      const nr = squadRole(p, cur);
-      opts.push({
-        type: 'stay', club: cur,
-        title: 'Renovar con el ' + cur.name,
-        desc: p.contract <= 1 ? 'El club te pone un contrato nuevo sobre la mesa.' : 'Sigues bajo contrato. Un año más en casa.',
-        wage: wageFor(cur, p, nr.key) * (p.traits.includes('loyal') ? 1.06 : 1),
-        years: p.age >= 33 ? 1 : ri(2, 4), tags: [nr.name, 'Continuidad'],
-      });
+      const keep = (ctx.stature - cur.str) * 5 + (s.rating - 6.5) * 40
+        + (p.age <= 26 ? 15 : p.age >= 34 ? -30 : 0) + (s.mins > 900 ? 12 : -14);
+      clubWants = keep > -20 && !(p.flags && p.flags.wantOut);
+      if (clubWants) {
+        opts.push({
+          type: 'stay', club: cur,
+          title: 'Renovar con el ' + cur.name,
+          desc: p.contract <= 1 ? 'El club te pone un contrato nuevo sobre la mesa.' : 'Sigues bajo contrato. Un año más en casa.',
+          wage: wageFor(cur, p, role.key) * (p.traits.includes('loyal') ? 1.06 : 1),
+          years: p.age >= 33 ? 1 : ri(2, 4), tags: [role.name, 'Continuidad'],
+        });
+      }
     }
   }
 
-  /* Ofertas de fuera */
-  const pool = CLUBS.filter((c) => {
-    const lg = LEAGUES[leagueOfClub(G, c)];
-    if (!lg) return false;
-    return Math.abs(c.str - p.ovr) < 26;
-  });
-  const scored = [];
-  for (const c of pool) {
-    const it = clubInterest(G, c, ctx);
-    if (it > 46) scored.push({ club: c, it: it * rf(0.7, 1.35) });
+  /* --- 4. Ofertas de fuera, dentro de la banda que te corresponde --- */
+  const pool = [];
+  for (const c of CLUBS) {
+    const f = clubFeasibility(G, c, ctx);
+    if (f > 0.03) pool.push({ club: c, f: f * rf(0.55, 1.45) });
   }
-  scored.sort((a, b) => b.it - a.it);
-
-  // variedad: como mucho un club por liga
-  const seenLeague = {};
+  pool.sort((a, b) => b.f - a.f);
+  // Como mucho dos clubes por liga: variedad sin que una sola liga cope el mercado
+  const perLeague = {};
   const picks = [];
-  for (const sc of scored) {
-    const lk = leagueOfClub(G, sc.club);
-    if (seenLeague[lk]) continue;
-    seenLeague[lk] = 1; picks.push(sc);
-    if (picks.length >= 6) break;
+  for (const x of pool) {
+    const lk = leagueOfClub(G, x.club);
+    perLeague[lk] = (perLeague[lk] || 0) + 1;
+    if (perLeague[lk] > 2) continue;
+    picks.push(x);
+    if (picks.length >= 12) break;
   }
-  const nOffers = clamp(Math.round(picks.length ? gauss(2.1, 1, 0, 3) : 0), 0, 3);
-  shuffle(picks).slice(0, nOffers).forEach((sc) => {
-    const c = sc.club;
+
+  let nOffers = clamp(Math.round(gauss(2.2, 1, 0, 3)), 0, 3);
+  if (p.flags && (p.flags.wantOut || p.flags.forceMove)) nOffers = Math.max(nOffers, 2);
+  if (!picks.length) nOffers = 0;
+
+  const chosen = shuffle(picks.slice(0, 8)).slice(0, nOffers);
+  /* Si has hecho una temporada grande, al menos una oferta tiene que ser un paso
+     adelante de verdad: es justo lo que fallaba antes. No siempre el mismo club,
+     porque entonces todas las carreras acaban en el mismo sitio. */
+  const bigSeason = ctx.stature >= cur.str + 4 && s.mins > 1200;
+  if (bigSeason) {
+    const ups = picks.filter((x) => x.club.str > cur.str + 1);
+    if (ups.length) {
+      const best = pickW(ups.slice(0, 6), (x) => x.f * (1 + x.club.prestige / 130));
+      if (best && !chosen.some((x) => x.club.id === best.club.id)) {
+        if (chosen.length >= 3) chosen[chosen.length - 1] = best; else chosen.push(best);
+      }
+    }
+  }
+
+  chosen.forEach((x) => {
+    const c = x.club;
     const nr = squadRole(p, c);
     const lg = LEAGUES[leagueOfClub(G, c)];
     opts.push({
       type: 'transfer', club: c,
       title: 'Fichar por el ' + c.name,
-      desc: offerFlavour(G, c, nr),
+      desc: offerFlavour(G, c, nr, cur),
       wage: wageFor(c, p, nr.key), years: p.age >= 32 ? ri(1, 2) : ri(3, 5),
       tags: [lg.name, nr.name, c.prestige > 80 ? 'Club histórico' : lg.tier === 2 ? 'Segunda división' : 'Primera división'],
       fee: playerValue(p) * rf(0.85, 1.6),
+      stepUp: c.str - cur.str,
     });
   });
 
-  /* Cesion si no juegas y eres joven */
-  if (p.age <= 23 && s.mins < 900 && !cur.academy) {
+  /* --- 5. Cesiones: la vía normal de los jóvenes que no juegan --- */
+  const askedLoan = !!(p.flags && p.flags.wantLoan);
+  if (!p.loanFrom && !cur.academy && (p.age <= 23 || askedLoan) && p.age <= 25
+      && (s.mins < 1200 || role.min < 0.5 || askedLoan)) {
     const loanPool = CLUBS.filter((c) => {
       const lg = LEAGUES[leagueOfClub(G, c)];
-      return lg && c.str < p.ovr + 5 && c.str > p.ovr - 14 && c.id !== cur.id;
+      return lg && c.id !== cur.id && c.str < p.ovr + 6 && c.str > p.ovr - 16;
     });
     if (loanPool.length) {
-      const lc = pickW(loanPool, (c) => countryAffinity(COUNTRY_BY_CODE[p.country], c.country) * (1 / (1 + Math.abs(c.str - p.ovr + 4) / 5)));
+      const lc = pickW(loanPool, (c) => countryAffinity(COUNTRY_BY_CODE[p.country], c.country)
+        * (1 / (1 + Math.abs(c.str - p.ovr + 4) / 5)));
+      const yrs = chance(askedLoan ? 0.55 : 0.4) ? 2 : 1;
+      if (p.flags) delete p.flags.wantLoan;
       opts.push({
-        type: 'loan', club: lc, backTo: cur.id,
-        title: 'Cesión al ' + lc.name,
-        desc: 'Un año fuera para jugar. Si respondes, vuelves con otro cartel.',
-        wage: wageFor(lc, p, 'starter') * 0.7, years: 1,
-        tags: ['Cesión', 'Minutos asegurados'],
+        type: 'loan', club: lc, backTo: cur.id, loanYears: yrs,
+        title: 'Cesión al ' + lc.name + (yrs === 2 ? ' (dos años)' : ''),
+        desc: yrs === 2
+          ? 'Dos temporadas fuera para hacerte jugador. Es mucho tiempo, pero vas a jugarlo todo.'
+          : 'Un año fuera para jugar. Si respondes, vuelves con otro cartel.',
+        wage: wageFor(lc, p, 'starter') * 0.7, years: yrs,
+        tags: ['Cesión', yrs === 2 ? 'Dos años' : 'Un año', 'Minutos asegurados'],
       });
     }
   }
 
-  /* Si nadie te quiere: queda alguna puerta de servicio, pero no siempre */
+  /* --- 6. Si no queda nada --- */
+  const realOptions = opts.filter((o) => o.type !== 'retire');
   const stillWorthIt = p.age <= 33 || p.ovr >= 66 || chance(clamp(0.75 - (p.age - 33) * 0.18, 0, 0.75));
-  if (!opts.length && stillWorthIt) {
+  if (!realOptions.length && stillWorthIt) {
     const desperate = CLUBS.filter((c) => {
       const lg = LEAGUES[leagueOfClub(G, c)];
       return lg && c.str <= p.ovr + 2 && c.str >= p.ovr - 18;
@@ -282,8 +388,8 @@ function generateMarket(G, rep) {
     }
   }
 
-  /* Retirada */
-  if (!opts.length) {
+  /* --- 7. Retirada --- */
+  if (!opts.filter((o) => o.type !== 'retire').length) {
     opts.push({
       type: 'retire', club: null, forced: true,
       title: 'Colgar las botas',
@@ -298,15 +404,18 @@ function generateMarket(G, rep) {
       tags: ['Fin de carrera'],
     });
   }
-  return { options: opts, clubWants };
+  return { options: opts, clubWants, stature: ctx.stature };
 }
 
-function offerFlavour(G, club, role) {
+function offerFlavour(G, club, role, cur) {
   const lg = LEAGUES[leagueOfClub(G, club)];
   const bits = [];
+  const step = cur ? club.str - cur.str : 0;
   if (club.prestige >= 88) bits.push('Uno de los grandes de Europa llama a tu puerta.');
+  else if (step >= 6) bits.push('Un salto de nivel claro respecto a donde estás.');
   else if (club.prestige >= 74) bits.push('Un club con historia que quiere volver a lo más alto.');
   else if (lg.tier === 2) bits.push('Proyecto de ascenso: quieren que seas el líder.');
+  else if (step <= -5) bits.push('Bajarías de nivel, pero serías el amo del equipo.');
   else bits.push('Un club que te ha seguido toda la temporada.');
   if (role.key === 'star') bits.push('Te quieren como estandarte del equipo.');
   else if (role.key === 'key') bits.push('Titular desde el primer día.');
@@ -316,20 +425,66 @@ function offerFlavour(G, club, role) {
   return bits.join(' ');
 }
 
+/* ---------- Compromisos adquiridos a mitad de temporada ----------
+   Si das tu palabra en enero, en verano se cumple: no vuelve a haber elección. */
+function commitTo(G, club, reason) {
+  if (!club) return '';
+  G.committedTo = { clubId: club.id, reason };
+  return 'Acuerdo cerrado con el ' + club.name + '. En verano firmas allí, pase lo que pase.';
+}
+
+/* Fichaje de invierno de verdad: te vas en enero y juegas media temporada allí */
+function moveInWinter(G, club) {
+  if (!club) return '';
+  const nr = squadRole(G.player, club);
+  G.winterMove = { clubId: club.id, years: ri(3, 4), wage: wageFor(club, G.player, nr.key) };
+  return 'Te vas al ' + club.name + ' en el mercado de invierno. La media temporada que queda la juegas allí.';
+}
+
+/* Un pretendiente coherente con tu momento, para las ofertas que nacen de un evento.
+   `step` marca cuánto mejor que tu club actual queremos que sea. */
+function suitorClub(G, step) {
+  const p = G.player;
+  const cur = G.club;
+  const base = mainClub(cur) || cur;
+  const ctx = {
+    stature: p.ovr + clamp((p.rep - 40) * 0.12, -4, 8) + clamp(p.form / 9, -3, 4) + (step || 0),
+    mins: 2000, rating: 6.8, goals: 0, assists: 0,
+  };
+  const pool = [];
+  for (const c of CLUBS) {
+    if (c.id === base.id) continue;
+    if (step > 0 && c.str <= base.str + 1) continue;
+    const f = clubFeasibility(G, c, ctx);
+    if (f > 0.03) pool.push({ c, f });
+  }
+  if (!pool.length) return null;
+  return pickW(pool, (x) => x.f * (1 + x.c.prestige / 150)).c;
+}
+
 /* ---------- Aplicar el movimiento ---------- */
 function applyMove(G, opt) {
   const p = G.player;
   if (opt.type === 'retire') { p.retired = true; return; }
   const prev = G.club;
-  if (opt.type === 'loan') { p.loanFrom = opt.backTo; }
-  else if (p.loanFrom && opt.type !== 'loan') p.loanFrom = null;
+
+  if (opt.type === 'loan') {
+    p.loanFrom = opt.backTo;
+    p.loanYears = (opt.loanYears || 1) - 1;
+  } else if (opt.type === 'stay' && p.loanFrom) {
+    p.loanYears = Math.max(0, (p.loanYears || 1) - 1);   // la cesión sigue corriendo
+  } else {
+    p.loanFrom = null; p.loanYears = 0;
+  }
+
   p.seasonsAtClub = (prev && opt.club && prev.id === opt.club.id) ? (p.seasonsAtClub || 0) + 1 : 0;
   G.club = opt.club;
   p.contract = opt.years || 2;
   p.wage = opt.wage || 0.05;
+  if (p.flags) { delete p.flags.wantOut; delete p.flags.forceMove; }
   if (prev && opt.club && prev.id !== opt.club.id) {
     p.trust = clamp(52 + rf(-6, 10), 30, 80);
-    p.fanLove = opt.type === 'promote' ? 68 : clamp(50 + rf(-8, 10), 25, 75);
+    p.fanLove = opt.type === 'promote' || opt.type === 'return' ? 62 : clamp(50 + rf(-8, 10), 25, 75);
     p.morale = clamp(p.morale + (opt.club.prestige > (prev.prestige || 0) ? 8 : -2), 25, 100);
   }
   p.value = playerValue(p);
