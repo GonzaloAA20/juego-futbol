@@ -140,6 +140,7 @@ function playerStature(G, ctx) {
   if ((ctx.mins || 0) < 900) b -= 8;
   if (p.age >= 32) b -= (p.age - 31) * 2.5;
   if (p.traits.includes('mediastar')) b += 1.5;
+  if (p.flags && p.flags.traitor) b -= 5;                                    // te fuiste rompiendo tu palabra
   return p.ovr + clamp(b, -12, 14);
 }
 
@@ -166,6 +167,7 @@ function clubFeasibility(G, club, ctx) {
   if ((ctx.mins || 0) < 700) f *= 0.35;
   if (p.injuryHistory >= 4) f *= 0.8;
   if (p.traits.includes('hothead')) f *= 0.88;
+  if (p.flags && p.flags.traitor) f *= 0.7;   // nadie se fía del que rompió un contrato de por vida
   if (p.flags && p.flags.superAgent) f *= 1.3;
   f *= Math.pow(countryAffinity(COUNTRY_BY_CODE[p.country], club.country), 0.18);
   f *= 0.75 + lg.rep / 190;
@@ -404,7 +406,58 @@ function generateMarket(G, rep) {
       tags: ['Fin de carrera'],
     });
   }
+  /* --- 8. Contrato de por vida: irse tiene un precio brutal --- */
+  if (p.flags && p.flags.lifer) {
+    const cost = lifeBreachCost(G);
+    for (const o of opts) {
+      if (!o.club || o.club.id === cur.id || (cur.parent && o.club.id === cur.parent)) continue;
+      if (o.type === 'retire') continue;
+      o.breaksLifer = true;
+      o.tags = (o.tags || []).concat(['⚠️ Rompes el contrato de por vida']);
+      o.desc += ' Firmaste de por vida aquí: salir cuesta ' + fmtM(cost.fee)
+        + ' de cláusula y la afición no te lo va a perdonar nunca.';
+    }
+  }
+
   return { options: opts, clubWants, stature: ctx.stature };
+}
+
+/* ---------- Lo que cuesta romper un contrato de por vida ----------
+   No es un ajuste de números: es la decisión más cara del juego. Te llevas la
+   cláusula en dinero, pierdes el legado que habías construido en ese club y
+   arrastras la etiqueta de traidor el resto de la carrera. */
+function lifeBreachCost(G) {
+  const p = G.player;
+  const seasons = p.seasonsAtClub || 0;
+  // Se lleva casi todo lo ahorrado y te deja endeudado, sin que el número se
+  // dispare hasta lo absurdo en las carreras millonarias.
+  const raw = playerValue(p) * 0.45 + seasons * 1.2;
+  const ceiling = Math.max(8, (p.money || 0) * 0.85 + 11);
+  return {
+    fee: Math.round(clamp(raw, 4, ceiling) * 10) / 10,
+    legacy: 260 + seasons * 18,
+    rep: 12,
+  };
+}
+
+function breakLifeContract(G) {
+  const p = G.player;
+  const c = lifeBreachCost(G);
+  const club = G.club;
+  delete p.flags.lifer;
+  p.flags.traitor = 1;
+  p.money = Math.max(-20, Math.round(((p.money || 0) - c.fee) * 100) / 100);  // puedes acabar en números rojos
+  p.legacyExtra = (p.legacyExtra || 0) - c.legacy;
+  p.rep = clamp(p.rep - c.rep, 1, 100);
+  p.morale = clamp(p.morale - 22, 10, 100);
+  p.form = clamp((p.form || 0) - 14, -40, 40);
+  p.traits = p.traits.filter((t) => t !== 'loyal');
+  if (!p.traits.includes('judas')) p.traits.push('judas');
+  G.lifeBreach = {
+    club: club ? club.name : '',
+    fee: c.fee, legacy: c.legacy,
+  };
+  return G.lifeBreach;
 }
 
 function offerFlavour(G, club, role, cur) {
@@ -467,6 +520,11 @@ function applyMove(G, opt) {
   const p = G.player;
   if (opt.type === 'retire') { p.retired = true; return; }
   const prev = G.club;
+  G.lifeBreach = null;
+  if (p.flags && p.flags.lifer && opt.club && prev && opt.club.id !== prev.id
+      && !(prev.parent && opt.club.id === prev.parent)) {
+    breakLifeContract(G);
+  }
 
   if (opt.type === 'loan') {
     p.loanFrom = opt.backTo;
@@ -486,6 +544,11 @@ function applyMove(G, opt) {
     p.trust = clamp(52 + rf(-6, 10), 30, 80);
     p.fanLove = opt.type === 'promote' || opt.type === 'return' ? 62 : clamp(50 + rf(-8, 10), 25, 75);
     p.morale = clamp(p.morale + (opt.club.prestige > (prev.prestige || 0) ? 8 : -2), 25, 100);
+  }
+  if (G.lifeBreach) {
+    // Llegas señalado: ni la grada nueva ni el vestuario te reciben igual
+    p.fanLove = clamp((p.fanLove || 50) - 20, 8, 55);
+    p.trust = clamp((p.trust || 50) - 12, 15, 70);
   }
   p.value = playerValue(p);
 }

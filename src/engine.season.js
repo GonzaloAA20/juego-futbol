@@ -73,6 +73,9 @@ function rollInjuries(p, mods) {
   if (p.age >= 31) risk *= 1 + (p.age - 30) * 0.12;
   if (p.age <= 18) risk *= 0.85;
   risk *= 1 + (70 - clamp(p.fitness, 20, 100)) / 130;
+  // un cuerpo trabajado aguanta más: el físico deja de ser un número decorativo
+  const phy = p.attrs.phy != null ? p.attrs.phy : (p.attrs.aer != null ? p.attrs.aer : 65);
+  risk *= Math.pow(clamp(phy, 30, 99) / 68, -0.55);
   let tries = 3;
   while (tries-- > 0 && chance(risk)) {
     const sevRoll = rnd();
@@ -103,6 +106,14 @@ function playSpell(G, club, fx, availFrac, share, portion) {
   const posDef = POS_BY_KEY[p.pos];
   const ovrScale = Math.pow(clamp(p.ovr, 40, 99) / 75, 2.6);
   const teamAtk = Math.pow(clamp(club.str, 40, 95) / 72, 1.15);
+  /* Dos jugadores con la misma media no rinden igual: el que tiene el tiro más
+     afinado marca más, y el que pasa mejor asiste más. Repartir los puntos de
+     entrenamiento pasa a ser una decisión con consecuencias medibles. */
+  const A = p.attrs;
+  const shoF = Math.pow(clamp(A.sho != null ? A.sho : 70, 30, 99) / 70, 0.85);
+  const pasF = Math.pow(clamp(A.pas != null ? A.pas : 70, 30, 99) / 70, 0.8);
+  const driF = Math.pow(clamp(A.dri != null ? A.dri : 70, 30, 99) / 70, 0.35);
+  const menF = Math.pow(clamp(A.men != null ? A.men : 70, 30, 99) / 70, 0.4);
   const leagueAdj = Math.pow(78 / clamp(lg ? lg.rep : 70, 45, 100), 0.34);
   let gMul = 1, aMul = 1;
   if (p.traits.includes('freekick')) gMul *= 1.15;
@@ -113,18 +124,20 @@ function playSpell(G, club, fx, availFrac, share, portion) {
   const st = { apps, mins, goals: 0, assists: 0, motm: 0, yellow: 0, red: 0, cs: 0, saves: 0, conceded: 0, rating: 0 };
 
   if (p.pos === 'GK') {
-    const defQ = Math.pow(clamp(club.str, 40, 95) / 72, 1.5) * Math.pow(p.ovr / 75, 0.55);
+    const posF = Math.pow(clamp(A.pos != null ? A.pos : 70, 30, 99) / 70, 0.55);
+    const refF = Math.pow(clamp(A.ref != null ? A.ref : 70, 30, 99) / 70, 0.5);
+    const defQ = Math.pow(clamp(club.str, 40, 95) / 72, 1.5) * Math.pow(p.ovr / 75, 0.35) * posF;
     let concPer90 = clamp(1.42 / defQ * leagueAdj, 0.28, 3.2);
     if (p.traits.includes('wall')) concPer90 *= 0.9;
     st.conceded = poisson(concPer90 * nineties);
-    st.saves = poisson(clamp(2.4 + (1.6 - concPer90) * -1.1 + rf(-.3, .5), 1.2, 5.4) * nineties);
+    st.saves = poisson(clamp((2.4 + (1.6 - concPer90) * -1.1 + rf(-.3, .5)) * refF, 1.2, 6) * nineties);
     const csP = Math.exp(-concPer90 * (minsPerApp / 90));
     for (let i = 0; i < apps; i++) if (chance(csP)) st.cs++;
     st.assists = poisson(0.02 * nineties * (p.traits.includes('sweeper') ? 3 : 1));
     st.goals = chance(0.012 * nineties) ? 1 : 0;
   } else {
-    st.goals = poisson(posDef.g * ovrScale * teamAtk * leagueAdj * gMul * nineties) + Math.round((mods.extraGoals || 0) * portion);
-    st.assists = poisson(posDef.a * ovrScale * Math.pow(teamAtk, 0.7) * leagueAdj * aMul * nineties);
+    st.goals = poisson(posDef.g * ovrScale * shoF * driF * menF * teamAtk * leagueAdj * gMul * nineties) + Math.round((mods.extraGoals || 0) * portion);
+    st.assists = poisson(posDef.a * ovrScale * pasF * driF * Math.pow(teamAtk, 0.7) * leagueAdj * aMul * nineties);
   }
   st.goals = Math.max(0, st.goals);
   const cardBase = (p.pos === 'CB' || p.pos === 'DM' ? 0.22 : p.pos === 'GK' ? 0.04 : 0.13);
@@ -134,7 +147,8 @@ function playSpell(G, club, fx, availFrac, share, portion) {
   let rating = 6.35 + (p.ovr - club.str) * 0.028 + (mods.rating || 0);
   if (p.pos === 'GK') rating += (st.cs / Math.max(1, apps)) * 1.5 - (st.conceded / Math.max(1, nineties)) * 0.28;
   else rating += ((st.goals + st.assists * 0.75) / Math.max(1, nineties)) * 1.15;
-  rating += gauss(0, 0.16, -0.5, 0.5) + p.form / 400;
+  const steady = clamp(0.30 - (clamp(A.men != null ? A.men : 70, 30, 99) - 55) * 0.0028, 0.09, 0.30);
+  rating += gauss(0, steady, -0.6, 0.6) + p.form / 400;
   st.rating = clamp(rating, 5.1, 9.4);
   st.motm = poisson(clamp(st.rating - 6.5, 0, 3) * apps * 0.075);
   return st;
@@ -165,7 +179,12 @@ function simulateSeason(G) {
   G.lastInjurySev = injuries.reduce((m, i) => Math.max(m, i.sev), 0);
   p.career.injuries += injuries.length;
   const seasonWeeks = 40;
-  const availFrac = clamp(1 - weeksOut / seasonWeeks, 0.03, 1);
+  /* Sanciones: no es una lesión, pero te borra del campo igual. Se consume en la
+     temporada en la que cae y se arrastra a la siguiente si es muy larga. */
+  const banWeeks = Math.min(p.banWeeks || 0, seasonWeeks);
+  p.banWeeks = Math.max(0, (p.banWeeks || 0) - seasonWeeks);
+  rep.banWeeks = banWeeks;
+  const availFrac = clamp(1 - (weeksOut + banWeeks) / seasonWeeks, 0.03, 1);
 
   /* --- partidos --- */
   const euroKey = club.academy ? club.parent : club.id;
@@ -176,7 +195,9 @@ function simulateSeason(G) {
   const role = squadRole(p, club, competitorGap(G));
   const shareOf = (cl, gap) => {
     let sh = squadRole(p, cl, gap).min;
-    sh *= 1 + (p.form / 260) + ((p.morale - 60) / 500) + ((p.trust - 55) / 320);
+    /* Lo que decides fuera del campo se cobra en minutos: la racha, la cabeza y
+       lo que piense el míster de ti pesan de verdad en la alineación. */
+    sh *= 1 + (p.form / 200) + ((p.morale - 60) / 330) + ((p.trust - 55) / 210);
     sh *= (mods.mins || 1);
     if (p.traits.includes('engine')) sh *= 1.06;
     if (p.age >= 34) sh *= 1 - (p.age - 33) * 0.06;
@@ -311,13 +332,19 @@ function developPlayer(G, stats, ctx) {
   if (p.traits.includes('latebloomer') && p.age >= 25) ageF = Math.max(ageF, 0.36 - (p.age - 25) * 0.04);
 
   const gap = Math.max(0, p.pot - p.ovr);
-  let growth = ageF * gap * 0.225 * minutesF * (mods.growth || 1) * rf(0.72, 1.3);
+  // Antes era demasiado fácil acercarse al techo. Ahora el margen de la suerte y
+  // del acierto es mayor: elegir bien de verdad separa una carrera de otra.
+  let growth = ageF * gap * 0.195 * minutesF * (mods.growth || 1) * rf(0.58, 1.42);
 
   // rendimiento por encima de lo esperado acelera; jugar mal frena
   const perf = (stats.rating - 6.6) * 1.3;
   growth += clamp(perf, -1.2, 1.6) * (p.age <= 26 ? 0.55 : 0.3);
   // entrenar en un club grande ayuda
-  growth *= 0.9 + clamp((G.club.str - 60) / 130, -0.1, 0.32);
+  growth *= 0.88 + clamp((G.club.str - 60) / 120, -0.12, 0.36);
+  // la cabeza también entrena: quien la tiene, aprovecha más cada temporada
+  growth *= 0.9 + clamp(((p.attrs.men != null ? p.attrs.men : 65) - 60) / 200, -0.08, 0.2);
+  // un jugador roto por dentro no mejora, y uno que está bien exprime el año
+  growth *= clamp(0.88 + (p.morale - 55) / 240, 0.8, 1.26);
 
   // declive
   let decline = 0;
@@ -433,6 +460,22 @@ function makeObjectives(G) {
   if (lg && lg.tier === 1 && club.str > 76) objs.push({ id: 'pos', text: 'Clasificar al equipo para Europa', target: 6, kind: 'pos', reward: 2 });
   else if (lg && lg.tier === 2) objs.push({ id: 'pos', text: 'Pelear el ascenso (top 6)', target: 6, kind: 'pos', reward: 2 });
   else objs.push({ id: 'rating', text: 'Terminar con una nota media de 7.0', target: 7.0, kind: 'rating', reward: 2 });
+
+  /* Un objetivo propio del puesto: al portero le piden paradas, al central que no
+     le expulsen y al extremo que aparezca en los partidos grandes. */
+  const nineties = expMins / 90;
+  if (p.pos === 'GK') {
+    const t = Math.max(20, Math.round(nineties * 2.6));
+    objs.push({ id: 'saves', text: `Hacer ${t} paradas`, target: t, kind: 'saves', reward: 2 });
+  } else if (['CB', 'DM'].includes(p.pos)) {
+    objs.push({ id: 'noRed', text: 'Terminar la temporada sin ver una roja', target: 0, kind: 'noRed', reward: 2 });
+  } else if (['LB', 'RB'].includes(p.pos)) {
+    const t = Math.max(2, Math.round(POS_BY_KEY[p.pos].g * nineties * Math.pow(p.ovr / 75, 2)) + 1);
+    objs.push({ id: 'goals', text: `Aportar ${t} goles desde el lateral`, target: t, kind: 'goals', reward: 2 });
+  } else {
+    const t = Math.max(2, Math.round(nineties * 0.075 * clamp(p.ovr - 62, 1, 22) * 0.16) + 2);
+    objs.push({ id: 'motm', text: `Ser el mejor del partido ${t} veces`, target: t, kind: 'motm', reward: 2 });
+  }
   return objs;
 }
 function checkObjectives(G, rep) {
@@ -442,8 +485,10 @@ function checkObjectives(G, rep) {
     if (o.kind === 'mins') val = s.mins;
     else if (o.kind === 'pos') val = rep.leaguePos;
     else if (o.kind === 'rating') val = s.rating;
+    else if (o.kind === 'noRed') val = s.red || 0;
     else val = s[o.kind] || 0;
-    const ok = o.kind === 'pos' ? val <= o.target : val >= o.target;
+    const lower = o.kind === 'pos' || o.kind === 'noRed';
+    const ok = lower ? val <= o.target : val >= o.target;
     return { ...o, val, ok };
   });
 }

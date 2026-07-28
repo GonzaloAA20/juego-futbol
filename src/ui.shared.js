@@ -118,9 +118,15 @@ function applyEffects(G, raw) {
   if (e.rep) p.rep = clamp(p.rep + e.rep, 1, 100);
   if (e.form) p.form = clamp(p.form + e.form, -60, 60);
   if (e.sp) p.sp += e.sp;
-  if (e.money) p.money = Math.max(-5, (p.money || 0) + e.money);
+  if (e.money) p.money = Math.max(-20, (p.money || 0) + e.money);
   if (e.wageCut) p.wage *= e.wageCut;
   if (e.legacyBonus) p.legacyExtra = (p.legacyExtra || 0) + e.legacyBonus;
+  /* Palancas de las decisiones gordas: una sanción te borra media temporada y
+     un techo perdido no vuelve nunca. Aquí es donde una carrera se rompe. */
+  if (e.ban) p.banWeeks = (p.banWeeks || 0) + e.ban;
+  if (e.potential) { p.pot = clamp(p.pot + e.potential, p.ovr, 99); p.value = playerValue(p); }
+  if (e.proneness) p.proneness = clamp(p.proneness * e.proneness, 0.35, 3.2);
+  if (e.contractYears) p.contract = Math.max(0, p.contract + e.contractYears);
   if (e.attr) for (const k in e.attr) if (p.attrs[k] != null) p.attrs[k] = clamp(p.attrs[k] + e.attr[k], 20, 99);
   if (e.trait && !p.traits.includes(e.trait)) p.traits.push(e.trait);
   if (e.lose) p.traits = p.traits.filter((t) => t !== e.lose);
@@ -149,8 +155,10 @@ const IMPORTANCE = {
 function optionImportance(o) {
   let n = 1;
   if (o.tags && o.tags.some((t) => /compromete|cambias de club|ya\b/i.test(t))) n = 3;
+  if (o.danger) n = 3;
   const e = typeof o.e === 'function' ? null : o.e;
   if (!e) return Math.max(n, 2);                       // hay azar de por medio
+  if (permanentWarnings(e).length) n = 3;
   if (e.trait || e.lose) n = Math.max(n, 2);
   const mag = Math.abs(e.morale || 0) + Math.abs(e.trust || 0) + Math.abs(e.fanLove || 0) + Math.abs(e.rep || 0);
   if (mag >= 18) n = Math.max(n, 2);
@@ -192,9 +200,21 @@ const HINT_RULES = [
   { k: 'form', up: 'vas a entrar en racha', dn: 'vas a entrar frío' },
   { k: 'rating', up: 'deberías rendir mejor', dn: 'te va a costar rendir' },
 ];
+/* Efectos que no se pueden deshacer: siempre se avisan, aunque las pistas estén
+   al mínimo. Que una carrera se rompa es divertido; que se rompa a traición, no. */
+function permanentWarnings(e) {
+  const w = [];
+  if (e.ban) w.push('te puede caer una sanción larga');
+  if (e.potential && e.potential < 0) w.push('puedes perder techo para siempre');
+  if (e.proneness && e.proneness > 1) w.push('tu cuerpo puede quedar tocado de por vida');
+  if (e.trait && TRAITS[e.trait] && TRAITS[e.trait].bad) w.push('puedes arrastrar una etiqueta el resto de la carrera');
+  return w;
+}
 function hintPhrase(o) {
   const e = typeof o.e === 'function' ? null : o.e;
-  if (!e) return 'No sabes cómo va a salir.';
+  if (!e) return o.danger ? 'Ni idea de cómo va a salir, y aquí hay mucho en juego.' : 'No sabes cómo va a salir.';
+  const perm = permanentWarnings(e);
+  if (perm.length) return perm[0].charAt(0).toUpperCase() + perm[0].slice(1) + '.';
   const bits = [];
   HINT_RULES.forEach((r) => {
     const v = e[r.k];
@@ -215,7 +235,12 @@ function hintPhrase(o) {
 
 function effectChips(o) {
   const level = getSettings().hints;
-  if (level === 'none') return '';
+  if (level === 'none') {
+    // Lo irreversible se avisa siempre, incluso sin pistas
+    const ee = typeof o.e === 'function' ? null : o.e;
+    const w = ee ? permanentWarnings(ee) : (o.danger ? ['te la juegas de verdad'] : []);
+    return w.map((x) => chip('☠️ ' + x, 'bad')).join('');
+  }
   if (o.tags && o.tags.length) {
     return o.tags.map((t) => chip(t, /compromete|cambias/i.test(t) ? 'bad' : 'warn')).join('');
   }
@@ -223,8 +248,9 @@ function effectChips(o) {
     return `<span class="hint">${esc(hintPhrase(o))}</span>`;
   }
   const e = typeof o.e === 'function' ? null : o.e;
-  if (!e) return chip('🎲 Puede salir bien o mal', 'warn');
+  if (!e) return chip(o.danger ? '☠️ Te la juegas de verdad' : '🎲 Puede salir bien o mal', o.danger ? 'bad' : 'warn');
   const out = [];
+  permanentWarnings(e).forEach((w) => out.push(chip('☠️ ' + w, 'bad')));
   const push = (label, up, good) => out.push(chip((up ? '▲ ' : '▼ ') + label, good ? 'on' : 'bad'));
   FX_MULT.forEach((k) => {
     if (e[k] == null || Math.abs(e[k] - 1) < 0.02) return;
@@ -254,8 +280,64 @@ function feedItem(it) {
 const SAVE_KEY = 'elcamino.save.v1';
 const META_KEY = 'elcamino.meta.v1';
 
+/* ---------- Serialización de estado transitorio ----------
+   El informe de temporada y el mercado llevan objetos de club dentro. Si no se
+   guardan, salir del juego en esas pantallas y darle a Continuar reventaba.
+   Se guardan por referencia (id + si es filial) y se reconstruyen al cargar. */
+function clubRefOf(c) {
+  if (!c) return null;
+  return c.academy ? { id: c.parent, academy: true } : { id: c.id, academy: false };
+}
+function clubFromRef(r) {
+  if (!r) return null;
+  const base = getClub(r.id);
+  if (!base) return null;
+  return r.academy ? academyOf(base) : base;
+}
+function serializeReport(rep) {
+  if (!rep) return null;
+  return {
+    stats: rep.stats, leaguePos: rep.leaguePos, titles: rep.titles, injuries: rep.injuries,
+    objs: rep.objs, objSp: rep.objSp, highlights: rep.highlights, broken: rep.broken,
+    prev: rep.prev, dev: rep.dev, role: rep.role, cupRound: rep.cupRound,
+    contRound: rep.contRound, contName: rep.contName, youthNote: rep.youthNote,
+    relegated: rep.relegated, promoted: rep.promoted, euroTier: rep.euroTier, banWeeks: rep.banWeeks,
+    milestones: (rep.milestones || []).map((m) => ({ icon: m.icon, name: m.name })),
+    clubRef: clubRefOf(rep.club),
+    leagueKey: rep.league ? rep.league.key : null,
+    table: (rep.table || []).map((r) => ({ id: r.club.id, pts: r.pts, pos: r.pos })),
+    winter: rep.winter ? { from: clubRefOf(rep.winter.from), to: clubRefOf(rep.winter.to), a: rep.winter.a, b: rep.winter.b } : null,
+  };
+}
+function hydrateReport(d) {
+  if (!d) return null;
+  const rep = { ...d };
+  rep.club = clubFromRef(d.clubRef);
+  rep.league = d.leagueKey ? LEAGUES[d.leagueKey] : null;
+  rep.table = (d.table || []).map((r) => ({ club: getClub(r.id), pts: r.pts, pos: r.pos })).filter((r) => r.club);
+  rep.winter = d.winter ? { from: clubFromRef(d.winter.from), to: clubFromRef(d.winter.to), a: d.winter.a, b: d.winter.b } : null;
+  return rep.club ? rep : null;
+}
+function serializeMarket(m) {
+  if (!m) return null;
+  return {
+    clubWants: m.clubWants, binding: m.binding, stature: m.stature,
+    options: (m.options || []).map((o) => ({ ...o, club: clubRefOf(o.club) })),
+  };
+}
+function hydrateMarket(d) {
+  if (!d) return null;
+  const opts = (d.options || []).map((o) => ({ ...o, club: clubFromRef(o.club) }))
+    .filter((o) => o.type === 'retire' || o.club);
+  if (!opts.length) return null;
+  return { clubWants: d.clubWants, binding: d.binding, stature: d.stature, options: opts };
+}
+
 function saveGame(G) {
   try {
+    // Antes de elegir club no hay nada que valga la pena guardar, y guardarlo
+    // dejaba un guardado roto que hacía fallar el botón de Continuar.
+    if (!G || !G.club || !G.player) return false;
     const data = {
       v: 1, seasonStart: G.seasonStart, player: G.player, clubId: G.club ? G.club.id : null,
       clubAcademy: G.club && G.club.academy ? G.club.parent : null,
@@ -266,6 +348,13 @@ function saveGame(G) {
       committedTo: G.committedTo, winterMove: G.winterMove, lastStature: G.lastStature,
       challengeKey: G.challenge ? G.challenge.key : null,
       legendClubId: G.legendClubId || null,
+      queueTotal: G.queueTotal || 0,
+      bought: G.bought || [],
+      lastReport: serializeReport(G.lastReport),
+      lastNt: G.lastNt || null,
+      lastAwards: G.lastAwards || [],
+      market: serializeMarket(G.market),
+      lastTables: null,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
@@ -289,11 +378,26 @@ function loadGame() {
       committedTo: d.committedTo || null, winterMove: d.winterMove || null, lastStature: d.lastStature || 0,
       challenge: d.challengeKey ? dailyChallenge(d.challengeKey) : null,
       legendClubId: d.legendClubId || null,
+      bought: d.bought || [],
+      lastReport: hydrateReport(d.lastReport),
+      lastNt: d.lastNt || null,
+      lastAwards: d.lastAwards || [],
+      market: hydrateMarket(d.market),
     };
     // sanear
     if (!G.club) return null;
     G.player.arcs = G.player.arcs || {};
     G.player.flags = G.player.flags || {};
+    G.player.records = G.player.records || {};
+    G.player.milestones = G.player.milestones || {};
+    G.player.clubStats = G.player.clubStats || {};
+    G.queueTotal = Math.max(d.queueTotal || 0, G.queue.length);
+
+    /* Red de seguridad: si la fase guardada necesita datos que no han sobrevivido,
+       se retrocede a un punto jugable en vez de dejar la pantalla en blanco. */
+    if ((G.step === 'report' || G.step === 'develop') && !G.lastReport) G.step = 'beat';
+    if (G.step === 'market' && !G.market) G.step = G.lastReport ? 'report' : 'beat';
+    if (G.step === 'beat' && !G.queue.length) G.step = 'sim';
     return G;
   } catch (e) { return null; }
 }

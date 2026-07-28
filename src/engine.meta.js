@@ -129,6 +129,38 @@ function seasonHighlights(G, rep) {
   return shuffle(out).slice(0, 3);
 }
 
+/* ---------- Invertir en ti mismo ----------
+   Hasta ahora el dinero no servía para nada. Ahora se convierte en rendimiento:
+   cada verano puedes montarte tu propio equipo de trabajo. Es caro, hay que
+   renovarlo cada año y de joven no te lo puedes permitir, que es justo la gracia. */
+const INVESTMENTS = [
+  { id: 'fisio', icon: '🩺', name: 'Fisioterapeuta a tiempo completo', cost: 0.45,
+    desc: 'Alguien pendiente de tu cuerpo los 365 días.', e: { injuryRisk: 0.68, fitness: 6 } },
+  { id: 'prepa', icon: '🏋️', name: 'Preparador físico personal', cost: 0.3,
+    desc: 'Trabajo específico para tu posición y tu cuerpo.', e: { injuryRisk: 0.85, fitness: 9, attr: { phy: 1 } } },
+  { id: 'chef', icon: '🥗', name: 'Nutricionista y chef', cost: 0.25,
+    desc: 'Se acabó comer lo que pillas.', e: { fitness: 10, growth: 1.05 } },
+  { id: 'psico', icon: '🧠', name: 'Psicólogo deportivo', cost: 0.22,
+    desc: 'La cabeza también se entrena.', e: { morale: 12, rating: 0.06, attr: { men: 1 } } },
+  { id: 'video', icon: '🎥', name: 'Analista de vídeo propio', cost: 0.4,
+    desc: 'Cada rival estudiado antes de pisar el campo.', e: { growth: 1.1, rating: 0.06 } },
+  { id: 'tech', icon: '❄️', name: 'Sala de recuperación en casa', cost: 0.7,
+    desc: 'Crioterapia, presoterapia y cámara hiperbárica.', e: { injuryRisk: 0.72, fitness: 12, mins: 1.04 } },
+  { id: 'coach', icon: '🎯', name: 'Entrenador específico de tu puesto', cost: 0.35,
+    desc: 'Un especialista solo para pulir lo tuyo.', e: null },   // el efecto depende de la posición
+];
+/* El entrenador específico mejora lo que de verdad importa en tu demarcación */
+function investmentEffect(inv, p) {
+  if (inv.id !== 'coach') return inv.e;
+  const w = WEIGHTS[p.pos];
+  const key = Object.keys(w).sort((a, b) => w[b] - w[a])[0];
+  return { attr: { [key]: 2 }, growth: 1.06 };
+}
+function investmentsFor(G) {
+  const p = G.player;
+  return INVESTMENTS.filter((i) => !(G.bought || []).includes(i.id));
+}
+
 /* ---------- Ventajas desbloqueables ----------
    Lo que se gana en una carrera sirve para la siguiente: engancha a volver a jugar. */
 const PERKS = [

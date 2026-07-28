@@ -5,16 +5,48 @@
 function renderStep() {
   const G = window.G;
   if (!G) return screenHome();
-  if (G.player.retired) return screenRetired();
-  switch (G.step) {
-    case 'beat': return screenBeat();
-    case 'sim': return screenSimulating();
-    case 'report': return screenReport();
-    case 'develop': return screenDevelop();
-    case 'market': return screenMarket();
-    default: return screenBeat();
+  try {
+    if (G.player.retired) return screenRetired();
+    switch (G.step) {
+      case 'beat': return screenBeat();
+      case 'sim': return screenSimulating();
+      case 'report': return screenReport();
+      case 'develop': return screenDevelop();
+      case 'market': return screenMarket();
+      default: return screenBeat();
+    }
+  } catch (err) {
+    /* Antes de dejar la pantalla en blanco, intentar recolocar la partida en un
+       punto jugable. Una carrera de veinte temporadas no se pierde por un fallo. */
+    return screenRecover(err);
   }
 }
+
+function screenRecover(err) {
+  const G = window.G;
+  screen(`${brand()}
+  <div class="card" style="border-color:#5a2731">
+    <div class="tiny red">Se ha atascado algo</div>
+    <h2 style="margin:6px 0 8px">Tu carrera sigue a salvo</h2>
+    <p class="dim small">Ha fallado al dibujar esta pantalla, pero la partida está guardada.
+    Puedes retomarla desde el principio de la temporada sin perder nada de lo conseguido.</p>
+    <div class="col mt">
+      <button class="btn primary wide" data-act="recoverSeason">Retomar la temporada</button>
+      <button class="btn ghost wide" data-act="home">Ir al menú</button>
+    </div>
+    <details class="mt-s"><summary class="small dim2">Detalle técnico</summary>
+      <pre class="small dim2" style="white-space:pre-wrap;margin-top:6px">${esc(String(err && err.stack || err).slice(0, 500))}</pre>
+    </details>
+  </div>`);
+}
+ACTIONS.recoverSeason = () => {
+  const G = window.G;
+  if (!G) return screenHome();
+  G.lastReport = null; G.market = null;
+  G.step = 'beat';
+  if (!G.queue || !G.queue.length) { startSeason(G, false); return; }
+  saveGame(G); renderStep();
+};
 
 /* ---------- Arranque de temporada ---------- */
 function startSeason(G, first) {
@@ -30,7 +62,15 @@ function startSeason(G, first) {
   }
   syncSquad(G);
   G.objectives = makeObjectives(G);
+  G.bought = [];                    // el staff se contrata temporada a temporada
   G.seasonFeed = [];
+  /* Estar en números rojos pesa: ni te puedes rodear bien ni juegas tranquilo. */
+  if ((p.money || 0) < 0) {
+    p.morale = clamp(p.morale - 8, 15, 100);
+    G.mods.rating -= 0.04;
+    G.seasonFeed.push({ icon: '🏦', cls: 'bad', text: `Arrastras <b>${fmtM(Math.abs(p.money))}</b> de deuda. Los abogados llaman más que tu madre.` });
+    p.money = Math.min(0, p.money + Math.max(0.2, p.wage * 0.3));   // vas devolviéndola
+  }
   G.queue = buildQueue(G, first);
   G.queueTotal = G.queue.length;
   G.step = 'beat';
@@ -48,6 +88,7 @@ function buildQueue(G, first) {
   const pool = EVENTS.filter((e) => {
     if (e.when && !e.when(G)) return false;
     const last = p.usedEvents[e.id];
+    if (e.once) return last == null;          // una vez por carrera y no vuelve
     return last == null || season - last >= 5;
   });
   const fast = getSettings().pace === 'rapido';
@@ -202,9 +243,32 @@ function screenPreseason() {
     </div>
   </div>
   <div class="card">
+    <div class="row between">
+      <div><div class="tiny">Tu dinero</div><h3 style="margin-top:3px">Invertir en ti</h3></div>
+      <div class="ovr" style="width:auto;min-width:78px;height:52px;border-radius:14px;padding:0 12px">
+        <b style="font-size:17px">${fmtM(p.money || 0)}</b><span class="tiny">EN EL BANCO</span></div>
+    </div>
+    <p class="small dim2 mt-s">Se contrata cada verano y vale para esta temporada. Cuanto mejor cobres, mejor te puedes rodear.</p>
+    <div class="col mt-s">
+      ${investmentsFor(G).map((inv, i) => {
+        const can = (p.money || 0) >= inv.cost;
+        return `<button class="opt ${can ? '' : 'off'}" data-act="buyInv" data-id="${inv.id}" ${can ? '' : 'disabled'}>
+          <div class="row between" style="gap:8px">
+            <div class="t">${inv.icon} ${esc(inv.name)}</div>
+            <div class="b mono ${can ? 'acc' : 'red'}">${fmtM(inv.cost)}</div>
+          </div>
+          <div class="d">${esc(inv.desc)}</div>
+        </button>`;
+      }).join('') || '<p class="small dim2">Ya lo has contratado todo este verano.</p>'}
+    </div>
+    ${(G.bought || []).length ? `<div class="row wrap mt-s" style="gap:6px">
+      ${G.bought.map((id) => { const iv = INVESTMENTS.find((x) => x.id === id); return chip((iv ? iv.icon + ' ' + iv.name : id), 'on'); }).join('')}
+    </div>` : ''}
+  </div>
+  <div class="card">
     <h3>¿Cómo preparas el año?</h3>
     <div class="col mt">
-      ${PRESEASON.map((o, i) => `<button class="opt" data-act="preOpt" data-i="${i}">
+      ${preseasonOptions(G).map((o, i) => `<button class="opt" data-act="preOpt" data-i="${i}">
         <div class="t">${o.l}</div><div class="d">${o.d}</div>
         <div class="meta">${effectChips(o)}</div>
       </button>`).join('')}
@@ -242,10 +306,41 @@ const PRESEASON = [
   { l: '🏝️ Descansar de verdad', d: 'Llegas fresco de cabeza pero justo de ritmo.', e: { morale: 12, fitness: -4, form: -6, injuryRisk: 0.95 } },
   { l: '📣 Gira comercial con el club', d: 'Muchos aviones, mucha exposición.', e: { rep: 8, money: 0.25, fitness: -8, trust: 3 } },
 ];
+/* El verano no se prepara igual siendo portero que siendo extremo: cada puesto
+   tiene su propia obsesión de julio. */
+const PRESEASON_POS = {
+  GK: { l: '🧤 Verano entero de blocaje y salidas', d: 'Manos y área. Nada más.', e: { attr: { han: 2, aer: 1 }, rating: 0.05, growth: 1.04 } },
+  CB: { l: '🧱 Trabajo de anticipación y duelos', d: 'Aprender a llegar antes que a llegar fuerte.', e: { attr: { def: 2, men: 1 }, rating: 0.05, injuryRisk: 0.95 } },
+  LB: { l: '🏃 Series de ida y vuelta por la banda', d: 'Cien metros noventa veces.', e: { attr: { pac: 2, phy: 1 }, assists: 1.1, fitness: -4 } },
+  RB: { l: '🏃 Series de ida y vuelta por la banda', d: 'Cien metros noventa veces.', e: { attr: { pac: 2, phy: 1 }, assists: 1.1, fitness: -4 } },
+  DM: { l: '🧭 Vídeo de posicionamiento y coberturas', d: 'Estar siempre donde va a caer el balón.', e: { attr: { def: 2, men: 2 }, rating: 0.06, trust: 6 } },
+  CM: { l: '🎛️ Rondos y perfiles de recepción', d: 'Recibir siempre de cara.', e: { attr: { pas: 2, dri: 1 }, assists: 1.12, rating: 0.04 } },
+  AM: { l: '🪄 Último pase hasta que salga solo', d: 'Mil pases entre líneas.', e: { attr: { pas: 2, dri: 1 }, assists: 1.18, goals: 1.05 } },
+  LW: { l: '⚡ Uno contra uno a máxima velocidad', d: 'Regatear cansado, que es como se regatea.', e: { attr: { dri: 2, pac: 1 }, goals: 1.1, fitness: -5 } },
+  RW: { l: '⚡ Uno contra uno a máxima velocidad', d: 'Regatear cansado, que es como se regatea.', e: { attr: { dri: 2, pac: 1 }, goals: 1.1, fitness: -5 } },
+  ST: { l: '🎯 Quinientos remates cada mañana', d: 'Definición hasta que duela el empeine.', e: { attr: { sho: 2 }, goals: 1.18, fitness: -5 } },
+};
+function preseasonOptions(G) {
+  const own = PRESEASON_POS[G.player.pos];
+  return own ? PRESEASON.concat([own]) : PRESEASON;
+}
+ACTIONS.buyInv = (d) => {
+  const G = window.G, p = G.player;
+  const inv = INVESTMENTS.find((x) => x.id === d.id);
+  if (!inv || (p.money || 0) < inv.cost) return;
+  p.money -= inv.cost;
+  G.bought = (G.bought || []).concat([inv.id]);
+  const note = applyEffects(G, investmentEffect(inv, p));
+  G.seasonFeed.push({ icon: inv.icon, cls: 'info', text: `Contratas: <b>${esc(inv.name)}</b> por ${fmtM(inv.cost)}.` });
+  saveGame(G); keepScrollOnce(); renderStep();
+};
+
 ACTIONS.preOpt = (d) => {
   const G = window.G;
-  const note = applyEffects(G, PRESEASON[+d.i].e);
-  G.seasonFeed.push({ icon: '🏋️', cls: 'info', text: 'Pretemporada: ' + PRESEASON[+d.i].l.replace(/^\S+\s/, '') + (note ? ' — ' + note : '') });
+  const opt = preseasonOptions(G)[+d.i];
+  if (!opt) return;
+  const note = applyEffects(G, opt.e);
+  G.seasonFeed.push({ icon: '🏋️', cls: 'info', text: 'Pretemporada: ' + opt.l.replace(/^\S+\s/, '') + (note ? ' — ' + note : '') });
   G.queue.shift(); saveGame(G); renderStep();
 };
 
@@ -485,6 +580,7 @@ function screenReport() {
       + `y media en el ${esc(w.to.name)} (${w.b.apps} pj, ${w.b.goals} g).` });
   }
   rep.injuries.forEach((i) => feed.push({ icon: '🚑', cls: 'bad', text: `<b>${esc(i.name)}</b> — ${i.weeks} semanas de baja.` }));
+  if (rep.banWeeks) feed.push({ icon: '⛔', cls: 'bad', text: `<b>Sancionado ${rep.banWeeks} semanas.</b> Ni entrenar con el grupo.` });
   if (s.mins < 500 && s.apps < 12) feed.push({ icon: '🪑', cls: 'bad', text: 'Un año para olvidar: apenas has jugado.' });
   rep.titles.forEach((t) => feed.push({ icon: t.icon, cls: 'gold', text: `<b>¡${esc(t.name.toUpperCase())}!</b>` }));
   if (rep.contRound) feed.push({ icon: '🌍', cls: 'info', text: `${esc(rep.contName)}: ${esc(rep.contRound)}.` });
@@ -751,13 +847,45 @@ ACTIONS.mkOpt = (d) => {
     if (!confirm('¿Seguro que quieres retirarte? Se acaba la carrera.')) return;
     p.retired = true; saveGame(G); return renderStep();
   }
+  if (o.breaksLifer) {
+    const c = lifeBreachCost(G);
+    if (!confirm('Firmaste de por vida por el ' + G.club.name + '.\n\n'
+      + 'Si te vas ahora: pagas ' + fmtM(c.fee) + ' de cláusula, pierdes todo el legado de este club '
+      + 'y cargarás con la etiqueta de traidor el resto de tu carrera.\n\n¿Seguro que quieres irte?')) return;
+  }
   const prevClub = G.club;
   applyMove(G, o);
   if (prevClub.id !== G.club.id) {
-    p.history.push({ season: seasonLabel(G) + ' →', club: G.club.name, move: true, note: 'Ficha por ' + G.club.name });
+    p.history.push({
+      season: seasonLabel(G) + ' →', club: G.club.name, move: true,
+      note: (G.lifeBreach ? 'Rompe su contrato de por vida y ficha por ' : 'Ficha por ') + G.club.name,
+    });
   }
+  if (G.lifeBreach) return screenLifeBreach(prevClub);
   nextSeason(G);
 };
+
+/* Romper un contrato de por vida merece su propia pantalla: es irreversible */
+function screenLifeBreach(prevClub) {
+  const G = window.G, p = G.player;
+  const b = G.lifeBreach;
+  screen(`${brand()}
+  <div class="card imp-3" style="border-color:#5a2731">
+    <div class="tiny red">Traición</div>
+    <h2 style="margin:6px 0 8px">Te vas del ${esc(prevClub.name)}</h2>
+    <p class="dim small">Habías firmado de por vida. Hoy sales por la puerta de atrás, con la cláusula pagada
+    y una grada que ha tapado tu mural. En ${esc(prevClub.name)} tu nombre ya no se pronuncia.</p>
+    <div class="row wrap mt" style="gap:6px">
+      ${chip('💸 −' + fmtM(b.fee), 'bad')}
+      ${chip('🏛️ −' + b.legacy + ' legado', 'bad')}
+      ${chip('📉 −12 fama', 'bad')}
+      ${chip('🐍 Traidor', 'bad')}
+    </div>
+    <p class="dim2 small mt">El mercado tampoco lo olvida: a partir de ahora los clubes se lo van a pensar dos veces.</p>
+    <button class="btn primary wide mt" data-act="afterBreach">Empezar de cero en el ${esc(G.club.name)}</button>
+  </div>`);
+}
+ACTIONS.afterBreach = () => { const G = window.G; G.lifeBreach = null; nextSeason(G); };
 
 /* ---------- Pasar de temporada ---------- */
 function nextSeason(G) {
