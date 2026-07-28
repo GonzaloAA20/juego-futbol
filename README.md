@@ -42,9 +42,9 @@ Si prefieres no hacer público el repositorio, la alternativa es mandar directam
 | **Clubes** | ~700, de 1ª y 2ª división de las ligas grandes y de 1ª de las demás |
 | **Ligas** | 49, con ascensos y descensos reales entre divisiones ligadas |
 | **Países** | 150+ seleccionables, con bandera, colores de equipación y nivel de selección |
-| **Eventos** | 84 situaciones con varias respuestas cada una |
-| **Momentos clave** | 31 escenas interactivas resueltas con tus atributos |
-| **Tramas** | 8 arcos narrativos que se desarrollan a lo largo de varias temporadas |
+| **Eventos** | 148 situaciones con varias respuestas cada una, muchas propias de tu puesto |
+| **Momentos clave** | 42 escenas interactivas resueltas con tus atributos |
+| **Tramas** | 14 arcos narrativos que se desarrollan a lo largo de varias temporadas |
 | **Vestuario** | Plantilla con nombres que envejece, crece y ficha cada verano |
 | **Hitos** | 23 metas de carrera que dan legado al alcanzarlas |
 | **Modos** | Carrera libre, Reto del Día y Leyenda de club |
@@ -69,6 +69,13 @@ Si prefieres no hacer público el repositorio, la alternativa es mandar directam
   Un equipo de Segunda pelea el ascenso y puede dar la campanada en la copa nacional.
 - **El Balón de Oro es muy difícil**: necesitas 88+ de media, números enormes y títulos grandes.
   En torno al 1-3 % de las carreras consigue uno.
+- **Tus atributos deciden tus números.** Dos jugadores con la misma media no rinden igual: el que
+  tiene el tiro afinado marca más, el que pasa mejor asiste más, el de más mentalidad rinde parejo
+  todas las semanas y el de más físico se rompe menos. Repartir los puntos de evolución es una
+  decisión con consecuencias medibles, no un adorno.
+- **Cada puesto se juega distinto.** Objetivos propios (paradas si eres portero, no ver una roja si
+  eres central, ser MVP si eres extremo), pretemporada específica y decenas de situaciones que solo
+  le pasan a tu posición.
 - **Una gran temporada te abre puertas de verdad.** El mercado no mira solo tu media, sino tu
   *cartel*: goles, premios, títulos y fama de la temporada. Ser máximo goleador de la Premier y
   ganar la Eurocopa te pone en la agenda de la Juve o el United, aunque juegues en un equipo
@@ -90,6 +97,31 @@ Se juega con una mano y en vertical: nada mide menos de 42 px, los diálogos sub
 abajo como una hoja al alcance del pulgar, el botón de avanzar vive fijo en la parte inferior,
 se respetan las zonas seguras del iPhone y no hay desplazamiento lateral ni siquiera en
 pantallas de 320 px. Verificado jugando carreras completas a 320 y 360 px de ancho.
+
+### El dinero sirve para algo
+
+Cada verano puedes contratar tu propio equipo con lo que has ahorrado: fisioterapeuta a tiempo
+completo, preparador físico, nutricionista, psicólogo, analista de vídeo, sala de recuperación en
+casa o un entrenador específico de tu puesto. Se paga por temporada y se nota en lesiones, estado
+físico, crecimiento y rendimiento. Cobrar más deja de ser un número en la ficha y pasa a ser una
+ventaja real que se compra.
+
+Al revés también funciona: quedarte en números rojos te baja la moral, te resta rendimiento y te
+deja sin poder rodearte de nadie hasta que devuelvas la deuda.
+
+### Elecciones que pueden arruinarte
+
+Hay una docena de situaciones rarísimas —puedes jugar varias carreras sin ver ninguna— que no
+admiten marcha atrás: el bote sin etiqueta que te ofrecen fuera del club, la apuesta «tonta» de un
+amigo, el maletín en el aparcamiento, conducir después de una fiesta, el cirujano milagroso. Si
+eliges mal y encima tienes mala suerte, te puede caer una **sanción de temporadas enteras**, perder
+techo para siempre, quedarte con el cuerpo tocado o arrastrar la etiqueta de tramposo el resto de tu
+vida deportiva. Van marcadas siempre con ☠️, incluso con las pistas desactivadas: el juego nunca te
+la juega a traición.
+
+Y si firmas un **contrato de por vida**, romperlo cuesta lo que tiene que costar: la cláusula se
+lleva casi todo lo que has ahorrado y te deja endeudado, pierdes de golpe el legado construido en
+ese club, el rasgo *Traidor* te acompaña hasta la retirada y el mercado entero desconfía de ti.
 
 ### Decidir tiene que costar
 
@@ -162,16 +194,20 @@ El exprés deja una carrera entera en la mitad de toques, para jugar en un rato 
 
 ### Números de referencia
 
-Medidos sobre 250 carreras simuladas de un jugador español:
+Medidos sobre 400 carreras simuladas de un jugador español que decide **al azar**. Jugando bien se
+sube por encima de estos números: ahí está la gracia.
 
 | | |
 |---|---|
-| Media máxima alcanzada | mediana 78 · p90 86 · p99 92 |
+| Media máxima alcanzada | mediana 73 · p90 84 · p99 93 · máx 95 |
 | Edad de retirada | mediana 36 |
-| Ganan un Balón de Oro | 2-3 % |
+| Ganan un Balón de Oro | 1-3 % |
 | Traspasos que suben de nivel | 52 % |
-| Ganan una Champions | 6-9 % |
-| Llegan a la selección absoluta | 65 % (con Afganistán: 96 %) |
+| Ganan una Champions | 3-5 % |
+| Llegan a la selección absoluta | 33 % (con Afganistán: mucho más) |
+
+La súper carrera existe y se puede alcanzar, pero hay que ganársela: cuidar la cabeza, elegir el
+club correcto, rodearte bien con tu dinero y no romperte por el camino.
 
 ---
 
@@ -194,6 +230,7 @@ src/
   data.clubs.world.js   clubes de América, Asia y Oceanía
   data.competitions.js  ligas, copas, competiciones continentales y torneos de selección
   data.events.js        eventos y momentos clave
+  data.events.extra.js  riesgos de carrera, situaciones por puesto y vida fuera del campo
   data.storylines.js    arcos narrativos largos
   engine.core.js        aleatoriedad, atributos, creación de jugador, escudos y camisetas en SVG
   engine.squad.js       vestuario: compañeros con nombre, competencia por el puesto

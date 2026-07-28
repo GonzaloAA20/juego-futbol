@@ -268,6 +268,8 @@ label.tiny { margin-bottom: 2px; }
 }
 .opt:hover { border-color: var(--acc); background: #101f19; }
 .opt:active { transform: scale(.99); }
+.opt:disabled, .opt.off { opacity: .45; cursor: not-allowed; }
+.opt:disabled:hover, .opt.off:hover { border-color: var(--line); background: #0e1721; }
 .opt .t { font-weight: 800; font-size: 14.5px; margin-bottom: 3px; }
 .opt .d { font-size: 12.5px; color: var(--dim); }
 .opt .meta { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }

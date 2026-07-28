@@ -105,6 +105,7 @@ const TRAITS = {
   wonderkid:  { name: 'Perla', icon: '✨', desc: 'Creces más rápido antes de los 23.' },
   latebloomer:{ name: 'Flor tardía', icon: '🌻', desc: 'Sigues creciendo pasados los 27.' },
   professor:  { name: 'Profesor', icon: '🎓', desc: 'Envejeces mejor: el declive llega más tarde.' },
+  judas:      { name: 'Traidor', icon: '🐍', desc: 'Rompiste un contrato de por vida. Nadie se fía de ti.', bad: true },
 };
 
 /* ---------- Mundo: indice de clubes ---------- */
@@ -229,11 +230,11 @@ function rollPotential(bonus) {
   // La mayoria se queda en 70-82. Los cracks mundiales son raros de verdad.
   const roll = rnd();
   let base;
-  if (roll < 0.34) base = gauss(70, 4, 60, 78);
-  else if (roll < 0.70) base = gauss(78, 3.5, 70, 85);
-  else if (roll < 0.90) base = gauss(84, 3, 78, 89);
-  else if (roll < 0.985) base = gauss(89, 2.5, 84, 94);
-  else base = gauss(94, 2.5, 90, 99);
+  if (roll < 0.40) base = gauss(68, 4, 58, 76);
+  else if (roll < 0.74) base = gauss(76, 3.5, 68, 83);
+  else if (roll < 0.92) base = gauss(83, 3, 77, 88);
+  else if (roll < 0.99) base = gauss(88, 2.5, 83, 93);
+  else base = gauss(93, 2.5, 89, 99);
   return clamp(Math.round(base + (bonus || 0)), 58, 99);
 }
 
