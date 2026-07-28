@@ -3,6 +3,7 @@
    ============================================================ */
 
 const NEW = { country: null, pos: null, arch: null, perk: 'none', challenge: null,
+  legendMode: false, legendClub: null, clubFilter: '',
   firstName: '', lastName: '', shirtName: '', number: 10, foot: 'Derecho', filter: '' };
 const START_YEAR = 2025;
 
@@ -36,6 +37,7 @@ function screenHome() {
       ${cont ? `<button class="btn primary wide" data-act="continue">▶️ Continuar carrera</button>` : ''}
       <button class="btn ${cont ? '' : 'primary'} wide" data-act="newCareer">${cont ? '🔁 Empezar una carrera nueva' : '⚽ Empezar mi carrera'}</button>
       <button class="btn wide" data-act="dailyScreen">🎯 Reto del día${todayDone(meta) ? ' · jugado' : ''}</button>
+      <button class="btn wide" data-act="legendScreen">🏛️ Modo Leyenda de club</button>
       ${meta.hall.length ? `<button class="btn ghost wide" data-act="hall">🏛️ Sala de leyendas (${meta.hall.length})</button>` : ''}
       ${perkInfo.total > 0 ? `<button class="btn ghost wide" data-act="perksScreen">🎁 Ventajas (${perkInfo.list.filter((x) => x.unlocked).length - 1} desbloqueadas)</button>` : ''}
     </div>
@@ -96,9 +98,64 @@ ACTIONS.startDaily = () => {
   const ch = dailyChallenge(todayKey());
   seedRng(ch.seed);                       // a partir de aquí, todos vivimos lo mismo
   NEW.country = ch.country.code; NEW.pos = ch.pos; NEW.arch = ch.arch;
-  NEW.perk = 'none'; NEW.challenge = ch;
+  NEW.perk = 'none'; NEW.challenge = ch; NEW.legendMode = false; NEW.legendClub = null;
   NEW.firstName = ''; NEW.lastName = ''; NEW.shirtName = ''; NEW.number = 10;
   screenIdentity();
+};
+
+/* ---------- Modo Leyenda de club ----------
+   Eliges el club de tu vida antes de empezar, naces en su cantera y toda la
+   carrera se mide por lo que dejes ahí. El juego te va a tentar con ofertas
+   mejores: resistirse es justo la gracia del modo. */
+ACTIONS.legendScreen = () => {
+  const f = (NEW.clubFilter || '').toLowerCase().trim();
+  const list = CLUBS.filter((c) => LEAGUES[c.league] && (!f
+    || c.name.toLowerCase().includes(f)
+    || LEAGUES[c.league].name.toLowerCase().includes(f)))
+    .sort((a, b) => b.prestige - a.prestige).slice(0, 60);
+  screen(`${brand()}
+  <div class="card">
+    <h2>🏛️ Modo Leyenda de club</h2>
+    <p class="dim small">Elige el club de tu vida. Empiezas en su cantera y tu carrera se juzga por lo que
+    dejes ahí: partidos, goles, títulos y años con esa camiseta. Te van a llover ofertas mejores;
+    quedarte es la mitad del reto.</p>
+    <input class="input mt-s" data-inp="filterClub" placeholder="Buscar club o liga…" value="${esc(NEW.clubFilter || '')}" autocomplete="off">
+    <div class="scroller mt">
+      <div class="grid autowide">
+        ${list.map((c) => `<button class="pick ${NEW.legendClub === c.id ? 'on' : ''}" data-act="pickLegendClub" data-id="${c.id}">
+          ${crestSVG(c, 'crest-md')}
+          <span class="grow" style="min-width:0"><span class="nm" style="display:block">${esc(c.name)}</span>
+          <span class="small dim2">${COUNTRY_BY_CODE[c.country].flag} ${esc(LEAGUES[c.league].name)}</span></span>
+        </button>`).join('')}
+      </div>
+      ${list.length ? '' : '<p class="dim tc mt">Ningún club coincide.</p>'}
+    </div>
+  </div>
+  <div class="actionbar row" style="gap:10px">
+    <button class="btn ghost" data-act="home">Volver</button>
+    <button class="btn primary grow" data-act="startLegend" ${NEW.legendClub ? '' : 'disabled'}>Empezar aquí</button>
+  </div>`);
+};
+ACTIONS.filterClub = (d, n) => {
+  NEW.clubFilter = n.value;
+  const pos = n.selectionStart;
+  keepScrollOnce();
+  ACTIONS.legendScreen();
+  const inp = document.querySelector('[data-inp="filterClub"]');
+  if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch (e) {} }
+};
+ACTIONS.pickLegendClub = (d) => { NEW.legendClub = d.id; keepScrollOnce(); ACTIONS.legendScreen(); };
+ACTIONS.startLegend = () => {
+  if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return;
+  clearSave();
+  const club = getClub(NEW.legendClub);
+  if (!club) return;
+  NEW.challenge = null;
+  NEW.country = club.country;
+  NEW.pos = null; NEW.arch = null; NEW.perk = 'none';
+  NEW.firstName = ''; NEW.lastName = ''; NEW.shirtName = ''; NEW.number = 10;
+  NEW.legendMode = true;
+  screenPosition();
 };
 
 /* ---------- Ventajas desbloqueables ---------- */
@@ -125,7 +182,7 @@ ACTIONS.perksScreen = () => {
 function miniCard(ic, t, d) {
   return `<div class="sub"><div style="font-size:20px">${ic}</div><div class="b" style="margin:4px 0 2px">${t}</div><div class="small dim">${d}</div></div>`;
 }
-ACTIONS.newCareer = () => { if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return; clearSave(); NEW.country = null; NEW.pos = null; NEW.arch = null; NEW.challenge = null; NEW.perk = 'none'; screenCountry(); };
+ACTIONS.newCareer = () => { if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return; clearSave(); NEW.country = null; NEW.pos = null; NEW.arch = null; NEW.challenge = null; NEW.perk = 'none'; NEW.legendMode = false; NEW.legendClub = null; screenCountry(); };
 ACTIONS.continue = () => { const G = loadGame(); if (!G) { alert('No se ha podido cargar la partida.'); return; } window.G = G; renderStep(); };
 ACTIONS.home = () => screenHome();
 
@@ -170,11 +227,12 @@ function ntDifficultyLabel(tier) {
 ACTIONS.filterCountry = (d, n) => {
   NEW.filter = n.value;
   const pos = n.selectionStart;
+  keepScrollOnce();
   screenCountry();
   const inp = document.querySelector('[data-inp="filterCountry"]');
   if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch (e) {} }
 };
-ACTIONS.pickCountry = (d) => { NEW.country = d.code; screenCountry(); };
+ACTIONS.pickCountry = (d) => { NEW.country = d.code; keepScrollOnce(); screenCountry(); };
 ACTIONS.toPos = () => screenPosition();
 
 /* ---------- Paso 2: posicion ---------- */
@@ -201,11 +259,11 @@ function screenPosition() {
       </div>`).join('')}
   </div>
   <div class="actionbar row" style="gap:10px">
-    <button class="btn ghost" data-act="toCountry">Atrás</button>
+    <button class="btn ghost" data-act="${NEW.legendMode ? 'legendScreen' : 'toCountry'}">Atrás</button>
     <button class="btn primary grow" data-act="toArch" ${NEW.pos ? '' : 'disabled'}>Continuar</button>
   </div>`);
 }
-ACTIONS.pickPos = (d) => { NEW.pos = d.key; screenPosition(); };
+ACTIONS.pickPos = (d) => { NEW.pos = d.key; keepScrollOnce(); screenPosition(); };
 ACTIONS.toCountry = () => screenCountry();
 ACTIONS.toArch = () => screenArchetype();
 
@@ -250,8 +308,8 @@ function perkSection() {
     </div>
   </div>`;
 }
-ACTIONS.pickPerk = (d) => { NEW.perk = d.key; screenArchetype(); };
-ACTIONS.pickArch = (d) => { NEW.arch = d.key; screenArchetype(); };
+ACTIONS.pickPerk = (d) => { NEW.perk = d.key; keepScrollOnce(); screenArchetype(); };
+ACTIONS.pickArch = (d) => { NEW.arch = d.key; keepScrollOnce(); screenArchetype(); };
 ACTIONS.toIdentity = () => screenIdentity();
 
 /* ---------- Paso 4: nombre, dorsal y equipacion ---------- */
@@ -300,7 +358,7 @@ ACTIONS.setFirst = (d, n) => { NEW.firstName = n.value; liveKit(); };
 ACTIONS.setLast = (d, n) => { NEW.lastName = n.value; liveKit(); };
 ACTIONS.setShirt = (d, n) => { NEW.shirtName = n.value; liveKit(); };
 ACTIONS.setNum = (d, n) => { NEW.number = clamp(parseInt(n.value, 10) || 1, 1, 99); liveKit(); };
-ACTIONS.setFoot = (d) => { NEW.foot = d.f; screenIdentity(); };
+ACTIONS.setFoot = (d) => { NEW.foot = d.f; keepScrollOnce(); screenIdentity(); };
 ACTIONS.randomName = () => {
   const nm = randomName(NEW.country).split(' ');
   NEW.firstName = nm[0]; NEW.lastName = nm.slice(1).join(' '); NEW.shirtName = '';
@@ -323,7 +381,21 @@ ACTIONS.createChar = () => {
     challenge: NEW.challenge || null,
   };
   computeEuroSpots(G);
-  G.startOptions = applyTwist(G, startingOptions(G));
+  if (NEW.legendMode && NEW.legendClub) {
+    const club = getClub(NEW.legendClub);
+    G.legendClubId = club.id;
+    const useAcademy = club.str >= 60;
+    G.startOptions = [{
+      kind: useAcademy ? 'academy' : 'first',
+      club: useAcademy ? academyOf(club) : club, parent: useAcademy ? club : null,
+      title: (useAcademy ? 'Cantera del ' : '') + club.name,
+      desc: 'El club de tu vida. Aquí empieza y, si aguantas las tentaciones, aquí acaba.',
+      pros: ['Es tu casa', 'Toda la afición contigo'], cons: ['Vas a tener ofertas mejores'],
+      dev: useAcademy ? 1.12 : 1.0, minsMod: useAcademy ? 0.8 : 1.1,
+    }];
+  } else {
+    G.startOptions = applyTwist(G, startingOptions(G));
+  }
   screenStart();
 };
 

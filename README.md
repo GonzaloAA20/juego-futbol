@@ -42,12 +42,12 @@ Si prefieres no hacer público el repositorio, la alternativa es mandar directam
 | **Clubes** | ~700, de 1ª y 2ª división de las ligas grandes y de 1ª de las demás |
 | **Ligas** | 49, con ascensos y descensos reales entre divisiones ligadas |
 | **Países** | 150+ seleccionables, con bandera, colores de equipación y nivel de selección |
-| **Eventos** | 77 situaciones con varias respuestas cada una |
-| **Momentos clave** | 27 escenas interactivas resueltas con tus atributos |
+| **Eventos** | 84 situaciones con varias respuestas cada una |
+| **Momentos clave** | 31 escenas interactivas resueltas con tus atributos |
 | **Tramas** | 8 arcos narrativos que se desarrollan a lo largo de varias temporadas |
 | **Vestuario** | Plantilla con nombres que envejece, crece y ficha cada verano |
 | **Hitos** | 23 metas de carrera que dan legado al alcanzarlas |
-| **Modos** | Carrera libre y Reto del Día con semilla compartida |
+| **Modos** | Carrera libre, Reto del Día y Leyenda de club |
 
 ### Cómo funciona la simulación
 
@@ -91,12 +91,16 @@ abajo como una hoja al alcance del pulgar, el botón de avanzar vive fijo en la 
 se respetan las zonas seguras del iPhone y no hay desplazamiento lateral ni siquiera en
 pantallas de 320 px. Verificado jugando carreras completas a 320 y 360 px de ancho.
 
-### Se ve lo que te juegas
+### Decidir tiene que costar
 
-Cada decisión viene etiquetada como **menor**, **importante** o **crucial**, y las cruciales
-llegan con el marco en rojo. Debajo de cada respuesta aparece lo que hace: *▲ Crecimiento*,
-*▼ Confianza del míster*, *▲ Riesgo de lesión*, *Te compromete*… Esas etiquetas se deducen del
-propio efecto en el código, así que ninguna opción puede prometer algo que luego no cumple.
+Cada decisión viene etiquetada como **menor**, **importante** o **crucial**, y las cruciales llegan
+con el marco en rojo y piden confirmación antes de aplicarse.
+
+Debajo de cada respuesta hay una **pista en lenguaje natural**, no una ficha técnica: *«Te va a hacer
+mejor jugador, pero tu cuerpo lo va a pagar»* en vez de *«▲ Crecimiento, ▲ Riesgo de lesión»*.
+Se intuye por dónde va, pero hay que pensarlo. En `⚙️ Ajustes` se puede subir a **pistas completas**
+(con los efectos exactos) o bajar a **ninguna**, para jugar del todo a ciegas. Las pistas se generan
+desde el propio objeto de efectos, así que nunca prometen algo que no cumplen.
 
 La edad ya no es solo un número: cada etapa (**Promesa**, **Irrupción**, **Consolidación**,
 **Plenitud**, **Veteranía**, **Últimas balas**) trae sus propias situaciones, del primer sueldo
@@ -120,6 +124,20 @@ y pegar en el grupo:
 🏆 5 títulos · 🌐 162 internacionalidades
 ⭐ ICONO — 1768 puntos
 ```
+
+## 🏛️ Modo Leyenda de club
+
+Eliges el club de tu vida antes de empezar (cualquiera de los ~700), naces en su cantera y toda la
+carrera se mide por lo que dejes ahí: partidos, goles, títulos y años con esa camiseta. El mercado
+te va a tentar con ofertas mucho mejores y con eventos propios del modo —«la llamada que no querías»,
+volver a tu casa como rival—; resistirse es la mitad del reto. Al retirarte se te da un estatus en
+ese club, de *Se te recuerda* a *Leyenda eterna*.
+
+## Ritmo de juego
+
+En `⚙️ Ajustes` se elige entre **Completo** (todas las situaciones, tú repartes los puntos) y
+**Exprés** (menos situaciones por temporada y los puntos se reparten solos según tu posición).
+El exprés deja una carrera entera en la mitad de toques, para jugar en un rato muerto.
 
 ## Lo que engancha a volver a jugar
 
