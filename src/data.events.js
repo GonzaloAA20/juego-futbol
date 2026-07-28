@@ -818,6 +818,78 @@ const EVENTS = [
     { l: 'Adaptarme y callar', d: '', e: { injuryRisk: 1.12, trust: 5 } },
   ],
 },
+
+{
+  id: 'legend_temptation', cat: 'Club', w: 9, when: (G) => G.legendClubId && mainClub(G.club).id === G.legendClubId && P(G).ovr >= 76,
+  title: 'La llamada que no querías',
+  text: (G) => `Un club muy superior al tuyo pregunta por ti. Sueldo triple, Champions, escaparate mundial. Y tú llevas desde los seis años yendo a este campo.`,
+  opts: [
+    { l: 'Ni escuchar la oferta', d: 'Aquí naciste y aquí te quedas.',
+      e: { fanLove: 20, trust: 12, morale: 10, legacyBonus: 70, trait: 'loyal' } },
+    { l: 'Escucharla y decidir en verano', d: 'Se filtra y la grada se entera.', tags: ['Fuerzas tu salida'],
+      e: { flag: 'wantOut', fanLove: -18, morale: 5 } },
+    { l: 'Usarla para pedir mejor contrato', d: '', e: (G) => chance(0.6)
+      ? { wageCut: 1.5, fanLove: -4, note: 'Cuela: te mejoran la ficha para retenerte.' }
+      : { fanLove: -12, trust: -8, note: 'Les sienta fatal el órdago.' } },
+  ],
+},
+{
+  id: 'shirt_retired', cat: 'Club', w: 4, when: (G) => P(G).age >= 33 && P(G).fanLove >= 80,
+  title: 'Van a retirar tu dorsal',
+  text: (G) => `El club anuncia que nadie más volverá a llevar tu número. Ni siquiera te has retirado todavía.`,
+  opts: [
+    { l: 'Aceptar el homenaje', d: '', e: { fanLove: 12, rep: 8, morale: 14, legacyBonus: 90 } },
+    { l: 'Pedir que esperen a que me retire', d: 'Todavía queda fútbol.', e: { morale: 8, form: 8, legacyBonus: 40 } },
+  ],
+},
+{
+  id: 'mentor_coach', cat: 'Entrenador', w: 6, when: (G) => P(G).age >= 22 && P(G).age <= 30,
+  title: 'Un entrenador que te cambia',
+  text: () => `Llega un técnico que en tres semanas te hace entender el juego de otra manera. Nunca nadie te había explicado así lo que hay que hacer sin balón.`,
+  opts: [
+    { l: 'Absorber todo lo que pueda', d: '', e: { attr: { men: 4, pos: 3 }, growth: 1.14, sp: 1 } },
+    { l: 'Pedirle sesiones de vídeo a solas', d: '', e: { attr: { men: 3 }, trust: 10, growth: 1.08, fitness: -3 } },
+  ],
+},
+{
+  id: 'crowd_favourite', cat: 'Afición', w: 6, when: (G) => P(G).fanLove >= 70,
+  title: 'Tu cántico',
+  text: (G) => `El fondo se ha inventado un cántico con tu nombre. Lo cantan desde el minuto uno, ganes o pierdas.`,
+  opts: [
+    { l: 'Devolvérselo cada partido', d: '', e: { fanLove: 10, form: 8, morale: 10 } },
+    { l: 'Grabarlo y mandárselo a mi familia', d: '', e: { morale: 14, attr: { men: 1 } } },
+  ],
+},
+{
+  id: 'contract_rebel', cat: 'Club', w: 6, when: (G) => P(G).contract <= 1 && P(G).ovr >= 74,
+  title: 'Último año de contrato',
+  text: () => `Te queda un año. Tu representante quiere que llegues libre para llevarte una prima enorme. El club quiere venderte ya para no perderte gratis.`,
+  opts: [
+    { l: 'Aguantar hasta quedar libre', d: 'Máximo dinero, máximo desgaste.', tags: ['Te compromete'],
+      e: (G) => { P(G).contract = 1; return { money: 2, trust: -18, fanLove: -14, mins: 0.9, note: 'El club te va a tener en el banquillo hasta que acabe.' }; } },
+    { l: 'Renovar y quedarme', d: '', e: (G) => { P(G).contract += 3; return { trust: 12, fanLove: 10, morale: 6 }; } },
+    { l: 'Pedir que me vendan ahora', d: '', tags: ['Fuerzas tu salida'], e: { flag: 'wantOut', trust: -6 } },
+  ],
+},
+{
+  id: 'world_cup_year', cat: 'Selección', w: 7, when: (G) => P(G).nt.caps > 0 && P(G).age >= 21,
+  title: 'Año de Mundial',
+  text: () => `Es el año. Ir al Mundial depende de llegar en forma y de que el seleccionador te vea. Y quedan seis meses.`,
+  opts: [
+    { l: 'Todo por llegar a la lista', d: 'Aunque te cueste la temporada de club.', e: { form: 12, fitness: -8, injuryRisk: 1.2, rep: 5 } },
+    { l: 'Centrarme en mi club y que sea lo que sea', d: '', e: { trust: 10, rating: 0.05, growth: 1.05 } },
+    { l: 'Cuidarme para llegar entero al verano', d: '', e: { mins: 0.9, injuryRisk: 0.75, fitness: 10 } },
+  ],
+},
+{
+  id: 'academy_visit', cat: 'Carrera', w: 5, when: (G) => P(G).age >= 26,
+  title: 'Vuelta a la cantera',
+  text: (G) => `Te invitan a hablar con los chavales del filial. Te sientas donde te sentabas tú y ves treinta caras esperando que digas algo que les sirva.`,
+  opts: [
+    { l: 'Contarles la verdad, sin épica', d: '', e: { morale: 10, fanLove: 6, attr: { men: 2 }, legacyBonus: 30 } },
+    { l: 'Motivarles a lo grande', d: '', e: { morale: 6, rep: 4, fanLove: 5 } },
+  ],
+},
 ];
 
 /* ============================================================
@@ -1211,6 +1283,59 @@ const MOMENTS = [
     { l: 'Administrarme y leer el partido', a: ['men', 'pas', 'pos'], base: 0.72,
       win: { text: 'Sin correr, lo controlas todo. Clase pura.', e: { rating: 0.08, trust: 8, form: 8 } },
       lose: { text: 'Te pasa el partido por encima.', e: { rating: -0.06, form: -6 } } },
+  ],
+},
+
+{
+  id: 'bench_impact', when: (G) => squadRole(G.player, G.club, competitorGap(G)).min < 0.55,
+  title: 'Sales en el 70',
+  text: () => `Vais perdiendo y el míster te llama para los últimos veinte minutos. Es la ventana que llevas meses esperando.`,
+  opts: [
+    { l: 'Buscar el gol desde el primer balón', a: ['sho', 'pac'], base: 0.34,
+      win: { text: 'Entras y marcas a los cuatro minutos. El míster no te va a poder sentar la semana que viene.', e: { extraGoals: 1, mins: 1.18, trust: 14, form: 14 } },
+      lose: { text: 'Te precipitas en todo y pasas sin pena ni gloria.', e: { trust: -6 } } },
+    { l: 'Jugar sencillo y ordenar al equipo', a: ['pas', 'men'], base: 0.6,
+      win: { text: 'Ordenas el ataque y acabáis empatando. El míster toma nota.', e: { trust: 12, mins: 1.1, rating: 0.05 } },
+      lose: { text: 'Veinte minutos intrascendentes.', e: {} } },
+  ],
+},
+{
+  id: 'captain_moment', when: (G) => G.player.traits.includes('leader') || G.player.age >= 28,
+  title: 'El brazalete pesa',
+  text: () => `Un compañero se derrumba en el vestuario a media temporada. Todos te miran a ti.`,
+  opts: [
+    { l: 'Parar todo y hablar con él', a: ['men'], base: 0.72,
+      win: { text: 'Le levantas y el vestuario entero se une. Vuelve a ser el de antes.', e: { trust: 12, morale: 10, form: 8, legacyBonus: 25 } },
+      lose: { text: 'No encuentras las palabras. Se va del club en enero.', e: { morale: -8 } } },
+    { l: 'Dejarle espacio', a: ['men'], base: 0.5,
+      win: { text: 'Necesitaba aire. Vuelve solo.', e: { morale: 4 } },
+      lose: { text: 'Se hunde más y arrastra al grupo.', e: { form: -8, morale: -6 } } },
+  ],
+},
+{
+  id: 'weather_game',
+  title: 'Campo impracticable',
+  text: () => `Diluvia. El balón no rueda, el campo es un barrizal y el árbitro decide que se juega igual.`,
+  opts: [
+    { l: 'Adaptarme: pelotazos y segundas jugadas', a: ['phy', 'men'], base: 0.6,
+      win: { text: 'Te sale un partido de guerrero y sacáis los tres puntos.', e: { form: 10, trust: 8 } },
+      lose: { text: 'Te comen físicamente. Partido para olvidar.', e: { rating: -0.06 } } },
+    { l: 'Insistir en jugar al fútbol', a: ['dri', 'pas'], base: 0.35,
+      win: { text: 'En medio del barro, sacas la jugada del año.', e: { extraGoals: 1, rep: 6, form: 12 } },
+      lose: { text: 'Pierdes cinco balones en tu campo. El míster está rojo.', e: { trust: -10, rating: -0.08 } } },
+  ],
+},
+{
+  id: 'legend_return', when: (G) => G.legendClubId && mainClub(G.club).id !== G.legendClubId,
+  title: 'Vuelves a tu casa como rival',
+  text: (G) => `Se juega en el campo donde te hiciste futbolista, y esta vez estás en el equipo de enfrente.`,
+  opts: [
+    { l: 'Pedir no celebrar si marco', a: ['men'], base: 0.8,
+      win: { text: 'Marcas, no lo celebras y el estadio entero se pone en pie a aplaudirte.', e: { extraGoals: 1, fanLove: 14, rep: 8, morale: 10 } },
+      lose: { text: 'No hay gol que celebrar. Te vas con una sensación rara.', e: { morale: -6 } } },
+    { l: 'Ir a por todas, sin sentimentalismos', a: ['sho', 'men'], base: 0.45,
+      win: { text: 'Les endosas dos. Profesional por encima de todo.', e: { extraGoals: 1, form: 12, fanLove: -6 } },
+      lose: { text: 'Ni juegas bien ni te lo perdonan.', e: { form: -8, fanLove: -8 } } },
   ],
 },
 ];

@@ -32,6 +32,7 @@ function startSeason(G, first) {
   G.objectives = makeObjectives(G);
   G.seasonFeed = [];
   G.queue = buildQueue(G, first);
+  G.queueTotal = G.queue.length;
   G.step = 'beat';
   saveGame(G);
   renderStep();
@@ -49,7 +50,8 @@ function buildQueue(G, first) {
     const last = p.usedEvents[e.id];
     return last == null || season - last >= 5;
   });
-  const nEv = first ? 2 : ri(2, 4);
+  const fast = getSettings().pace === 'rapido';
+  const nEv = first ? (fast ? 1 : 2) : (fast ? ri(0, 2) : ri(2, 4));
   const chosen = [];
   for (let i = 0; i < nEv && pool.length; i++) {
     const e = pickW(pool.filter((x) => !chosen.includes(x)), (x) => x.w || 5);
@@ -60,7 +62,7 @@ function buildQueue(G, first) {
 
   /* momentos clave */
   const mpool = MOMENTS.filter((m) => !m.when || m.when(G));
-  const nMo = first ? 1 : ri(1, 2);
+  const nMo = first ? 1 : (fast ? (chance(0.55) ? 1 : 0) : ri(1, 2));
   const moms = [];
   for (let i = 0; i < nMo && mpool.length; i++) {
     const m = pick(mpool.filter((x) => !moms.includes(x)) || mpool);
@@ -98,16 +100,59 @@ function topbar(G) {
       <button class="btn sm ghost" data-act="profile">📋 Perfil</button>
       <button class="btn sm ghost" data-act="menu">⋯</button>
     </div>
+  </div>
+  ${seasonProgress(G)}`;
+}
+/* Barra de progreso de la temporada: cuántas decisiones quedan antes de jugar */
+function seasonProgress(G) {
+  if (G.step !== 'beat' || !G.queue) return '';
+  const total = (G.queueTotal || G.queue.length) || 1;
+  const done = total - G.queue.length;
+  return `<div class="row" style="gap:5px;margin:-6px 0 10px">
+    ${Array.from({ length: total }, (_, i) => `<div style="flex:1;height:3px;border-radius:3px;background:${i < done ? 'var(--acc)' : '#1b2836'}"></div>`).join('')}
   </div>`;
 }
+
 ACTIONS.menu = () => {
   modal(`<h3>Menú</h3>
     <div class="col mt">
       <button class="btn wide" data-act="closeModal">Seguir jugando</button>
+      <button class="btn wide" data-act="settings">⚙️ Ajustes de partida</button>
       <button class="btn ghost wide" data-act="saveNow">💾 Guardar ahora</button>
       <button class="btn danger wide" data-act="abandon">Abandonar carrera</button>
     </div>
     <p class="small dim2 mt">La partida se guarda sola en este navegador al final de cada paso.</p>`);
+};
+
+/* ---------- Ajustes: cuánta ayuda quieres y a qué ritmo juegas ---------- */
+const HINT_OPTS = [
+  ['full', 'Completas', 'Te digo exactamente qué sube y qué baja. Cómodo, pero se decide solo.'],
+  ['subtle', 'Sutiles', 'Una frase que insinúa por dónde va. Hay que pensar. Recomendado.'],
+  ['none', 'Ninguna', 'A ciegas, como en la vida. Solo el texto de la situación.'],
+];
+const PACE_OPTS = [
+  ['normal', 'Completo', 'Todas las decisiones y tú repartes los puntos de entrenamiento.'],
+  ['rapido', 'Exprés', 'Menos situaciones por temporada y los puntos se reparten solos. Para carreras rápidas.'],
+];
+ACTIONS.settings = () => {
+  const st = getSettings();
+  const w = modal(`<div class="row between" style="margin-bottom:6px">
+      <h3>⚙️ Ajustes</h3><button class="btn sm ghost" data-act="closeModal">✕</button></div>
+    <div class="tiny mt">Pistas en las decisiones</div>
+    <div class="col mt-s">
+      ${HINT_OPTS.map(([k, n, d]) => `<button class="opt ${st.hints === k ? 'on' : ''}" data-act="setHints" data-k="${k}"
+        style="${st.hints === k ? 'border-color:var(--acc);background:#0f2419' : ''}">
+        <div class="t">${n}</div><div class="d">${d}</div></button>`).join('')}
+    </div>
+    <div class="tiny mt">Ritmo de juego</div>
+    <div class="col mt-s">
+      ${PACE_OPTS.map(([k, n, d]) => `<button class="opt ${st.pace === k ? 'on' : ''}" data-act="setPace" data-k="${k}"
+        style="${st.pace === k ? 'border-color:var(--acc);background:#0f2419' : ''}">
+        <div class="t">${n}</div><div class="d">${d}</div></button>`).join('')}
+    </div>
+    <p class="small dim2 mt">Se aplican a partir de la siguiente temporada y se recuerdan entre partidas.</p>`);
+  ACTIONS.setHints = (d) => { setSetting('hints', d.k); w.remove(); ACTIONS.settings(); };
+  ACTIONS.setPace = (d) => { setSetting('pace', d.k); w.remove(); ACTIONS.settings(); };
 };
 ACTIONS.saveNow = () => { saveGame(window.G); closeModals(); toast('Partida guardada'); };
 ACTIONS.abandon = () => { if (confirm('¿Abandonar esta carrera? Se borrará el guardado.')) { clearSave(); closeModals(); window.G = null; screenHome(); } };
@@ -405,6 +450,13 @@ function runSimulation() {
   G.lastTables = {};
   if (rep.league && rep.table) G.lastTables[leagueOfClub(G, rep.club)] = rep.table;
 
+  /* lo que has hecho con la camiseta de cada club */
+  p.clubStats = p.clubStats || {};
+  const mc = mainClub(rep.club);
+  const cs = p.clubStats[mc.id] = p.clubStats[mc.id] || { name: mc.name, apps: 0, goals: 0, assists: 0, titles: 0, seasons: 0 };
+  cs.apps += s.apps; cs.goals += s.goals; cs.assists += s.assists;
+  cs.titles += rep.titles.length; cs.seasons++;
+
   /* hitos, récords y destacados: hacen que la temporada se sienta como un capítulo */
   rep.milestones = checkMilestones(G);
   rep.broken = brokenRecords(G, rep);      // antes de actualizar, para saber qué se ha batido
@@ -492,7 +544,28 @@ function screenReport() {
     <button class="btn primary wide" data-act="toDevelop">Ver mi evolución →</button>
   </div>`);
 }
-ACTIONS.toDevelop = () => { window.G.step = 'develop'; saveGame(window.G); renderStep(); };
+ACTIONS.toDevelop = () => {
+  const G = window.G;
+  if (getSettings().pace === 'rapido' && G.player.sp > 0) autoSpend(G);
+  G.step = 'develop'; saveGame(G); renderStep();
+};
+/* Reparto automático: los puntos van a lo que más pesa en tu posición, con algo
+   de variedad para no clavar siempre el mismo atributo. */
+function autoSpend(G) {
+  const p = G.player;
+  const w = WEIGHTS[p.pos];
+  const list = attrsFor(p.pos);
+  let spent = 0;
+  while (p.sp > 0 && spent < 40) {
+    const a = pickW(list.filter((x) => p.attrs[x.key] < 99), (x) => Math.pow(w[x.key] || 0.03, 1.4));
+    if (!a) break;
+    p.attrs[a.key] = clamp(p.attrs[a.key] + 1, 20, 99);
+    p.sp--; spent++;
+  }
+  p.ovr = computeOvr(p); p.value = playerValue(p);
+  p.peakOvr = Math.max(p.peakOvr || 0, p.ovr);
+  G.autoSpent = spent;
+}
 
 function buildTableView(rep) {
   if (!rep.table || !rep.table.length) return '';
@@ -519,9 +592,11 @@ function buildTableView(rep) {
 /* ---------- Evolución ---------- */
 function screenDevelop() {
   const G = window.G, p = G.player;
+  const autoNote = G.autoSpent; G.autoSpent = 0;
   const dev = G.lastReport.dev;
   const list = attrsFor(p.pos);
   const arrow = dev.delta > 0 ? `<span class="acc">▲ +${dev.delta}</span>` : dev.delta < 0 ? `<span class="red">▼ ${dev.delta}</span>` : '<span class="dim">= 0</span>';
+  const bump = dev.delta !== 0 ? 'bump' : '';
   screen(`${topbar(G)}
   <div class="card">
     <div class="tiny">Final de temporada</div>
@@ -530,7 +605,7 @@ function screenDevelop() {
       <div class="row" style="gap:14px">
         <div class="ovr" style="opacity:.6"><b>${dev.before}</b><span class="tiny">ANTES</span></div>
         <div style="font-size:22px;align-self:center">→</div>
-        <div class="ovr ${ovrTier(p.ovr)}"><b>${p.ovr}</b><span class="tiny">AHORA</span></div>
+        <div class="ovr ${ovrTier(p.ovr)}"><b class="${bump}">${p.ovr}</b><span class="tiny">AHORA</span></div>
       </div>
       <div style="text-align:right">
         <div class="b" style="font-size:17px">${arrow}</div>
@@ -544,6 +619,11 @@ function screenDevelop() {
     </div>` : ''}
   </div>
 
+  ${autoNote ? `<div class="card" style="border-color:#2b4a63">
+    <div class="row" style="gap:9px"><span style="font-size:19px">⚡</span>
+    <div><div class="b small">Ritmo exprés</div>
+    <div class="small dim2">Se han repartido ${autoNote} puntos automáticamente según tu posición.</div></div></div>
+  </div>` : ''}
   <div class="card">
     <div class="row between">
       <div><div class="tiny">Entrenamiento</div><h3 style="margin-top:3px">Reparte tus puntos</h3></div>
@@ -584,7 +664,7 @@ ACTIONS.spend = (d) => {
   p.attrs[d.k] = clamp(p.attrs[d.k] + 1, 20, 99);
   p.sp--; p.ovr = computeOvr(p); p.value = playerValue(p);
   p.peakOvr = Math.max(p.peakOvr || 0, p.ovr);
-  saveGame(G); renderStep();
+  saveGame(G); keepScrollOnce(); renderStep();
 };
 ACTIONS.toMarket = () => {
   const G = window.G;
@@ -787,6 +867,8 @@ function screenRetired() {
     ${ovrSparkline(p.history, 340, 92)}
   </div>` : ''}
 
+  ${clubLegendCard(G)}
+
   ${p.records && Object.keys(p.records).length ? `<div class="card">
     <div class="tiny">Récords personales</div>
     <div class="col mt-s" style="gap:6px">
@@ -814,6 +896,31 @@ function screenRetired() {
     ${ch ? '<button class="btn wide" data-act="dailyScreen">🎯 Volver a intentar el reto</button>' : ''}
     <button class="btn ghost wide" data-act="hall">🏛️ Sala de leyendas</button>
   </div>`);
+}
+
+/* Dónde has dejado más huella: el club donde más has jugado manda */
+function clubLegendCard(G) {
+  const p = G.player;
+  const all = Object.values(p.clubStats || {});
+  if (!all.length) return '';
+  const target = G.legendClubId && p.clubStats[G.legendClubId] ? p.clubStats[G.legendClubId] : null;
+  const home = target || all.slice().sort((a, b) => b.apps - a.apps)[0];
+  if (!home || home.apps < 20) return '';
+  const score = home.apps * 0.9 + home.goals * 2.4 + home.assists * 1.2 + home.titles * 28 + home.seasons * 8;
+  const tier = score >= 900 ? ['LEYENDA ETERNA', 'Tu nombre está en la fachada del estadio.', 'gold']
+    : score >= 520 ? ['ÍDOLO', 'Los niños de la ciudad llevan tu dorsal.', 'gold']
+      : score >= 280 ? ['UNO DE LOS NUESTROS', 'Aquí siempre vas a tener tu sitio.', 'acc']
+        : ['SE TE RECUERDA', 'Diste lo que pudiste con esta camiseta.', 'blue'];
+  return `<div class="card">
+    <div class="tiny">${target ? '🏛️ Modo Leyenda · tu club' : 'El club de tu vida'}</div>
+    <h3 style="margin:4px 0 2px">${esc(home.name)}</h3>
+    <div class="b ${tier[2]}" style="font-size:17px;letter-spacing:.03em">${tier[0]}</div>
+    <div class="small dim">${tier[1]}</div>
+    <div class="stats mt-s">
+      ${stat(home.seasons, 'Temporadas')}${stat(home.apps, 'Partidos')}
+      ${stat(home.goals, 'Goles')}${stat(home.titles, 'Títulos')}
+    </div>
+  </div>`;
 }
 
 function careerTable(p) {

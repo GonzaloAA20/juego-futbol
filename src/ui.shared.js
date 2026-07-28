@@ -5,12 +5,19 @@
 const APP = () => document.getElementById('app');
 const ACTIONS = {};
 
+/* Algunas acciones (repartir puntos, elegir país…) repintan la pantalla entera.
+   Si en esos casos saltamos arriba, se pierde el sitio y es insufrible en móvil.
+   keepScrollOnce() marca el siguiente repintado como "no me muevas". */
+let KEEP_SCROLL = false;
+function keepScrollOnce() { KEEP_SCROLL = true; }
 function screen(html) {
   const app = APP();
+  const keep = KEEP_SCROLL; KEEP_SCROLL = false;
+  const y = keep ? (window.scrollY || window.pageYOffset || 0) : 0;
   app.innerHTML = html;
-  app.scrollTop = 0;
-  window.scrollTo(0, 0);
   bind(app);
+  if (keep) window.scrollTo(0, y);
+  else { app.scrollTop = 0; window.scrollTo(0, 0); }
 }
 function bind(root) {
   root.querySelectorAll('[data-act]').forEach((n) => {
@@ -166,9 +173,54 @@ const FX_LABEL = {
   form: 'Racha', rating: 'Rendimiento', sp: 'Puntos de evolución', extraGoals: 'Gol asegurado',
 };
 const FX_MULT = ['growth', 'mins', 'goals', 'assists', 'injuryRisk'];
+
+/* Pistas en lenguaje natural, sin números ni nombres de estadística: se intuye
+   por dónde va la cosa, pero hay que pensarlo. Es lo que hace que decidir tenga
+   mérito en vez de ser leer una tabla. */
+const HINT_RULES = [
+  { k: 'growth', up: 'te va a hacer mejor jugador', dn: 'vas a estancarte' },
+  { k: 'injuryRisk', up: 'tu cuerpo lo va a pagar', dn: 'vas a llegar más entero' },
+  { k: 'mins', up: 'deberías jugar más', dn: 'vas a perder minutos' },
+  { k: 'goals', up: 'deberías ver más puerta', dn: 'vas a marcar menos' },
+  { k: 'assists', up: 'vas a asistir más', dn: 'vas a asistir menos' },
+  { k: 'trust', up: 'al míster le va a gustar', dn: 'al míster no le va a hacer gracia' },
+  { k: 'fanLove', up: 'la grada lo va a agradecer', dn: 'la grada no te lo va a perdonar' },
+  { k: 'rep', up: 'vas a salir en todas partes', dn: 'te vas a apagar mediáticamente' },
+  { k: 'morale', up: 'vas a estar bien contigo mismo', dn: 'te vas a quedar tocado' },
+  { k: 'fitness', up: 'vas a llegar fino', dn: 'vas a acusar el desgaste' },
+  { k: 'money', up: 'entra dinero', dn: 'sale dinero' },
+  { k: 'form', up: 'vas a entrar en racha', dn: 'vas a entrar frío' },
+  { k: 'rating', up: 'deberías rendir mejor', dn: 'te va a costar rendir' },
+];
+function hintPhrase(o) {
+  const e = typeof o.e === 'function' ? null : o.e;
+  if (!e) return 'No sabes cómo va a salir.';
+  const bits = [];
+  HINT_RULES.forEach((r) => {
+    const v = e[r.k];
+    if (v == null) return;
+    const isMult = FX_MULT.indexOf(r.k) >= 0;
+    const up = isMult ? v > 1 : v > 0;
+    const mag = isMult ? Math.abs(v - 1) : Math.abs(v);
+    if (mag < (isMult ? 0.04 : r.k === 'rating' ? 0.03 : r.k === 'money' ? 0.05 : 4)) return;
+    bits.push(up ? r.up : r.dn);
+  });
+  if (e.trait && TRAITS[e.trait]) bits.push('puede dejarte marca para siempre');
+  if (e.attr && Object.keys(e.attr).some((k) => e.attr[k] > 0)) bits.push('vas a pulir algo tuyo');
+  if (!bits.length) return 'No parece que cambie gran cosa.';
+  const shown = bits.slice(0, 2);
+  const t = shown.join(', pero ');
+  return t.charAt(0).toUpperCase() + t.slice(1) + '.';
+}
+
 function effectChips(o) {
+  const level = getSettings().hints;
+  if (level === 'none') return '';
   if (o.tags && o.tags.length) {
     return o.tags.map((t) => chip(t, /compromete|cambias/i.test(t) ? 'bad' : 'warn')).join('');
+  }
+  if (level === 'subtle') {
+    return `<span class="hint">${esc(hintPhrase(o))}</span>`;
   }
   const e = typeof o.e === 'function' ? null : o.e;
   if (!e) return chip('🎲 Puede salir bien o mal', 'warn');
@@ -213,6 +265,7 @@ function saveGame(G) {
       squad: G.squad, squadClubId: G.squadClubId,
       committedTo: G.committedTo, winterMove: G.winterMove, lastStature: G.lastStature,
       challengeKey: G.challenge ? G.challenge.key : null,
+      legendClubId: G.legendClubId || null,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
@@ -235,6 +288,7 @@ function loadGame() {
       squad: d.squad || null, squadClubId: d.squadClubId || null,
       committedTo: d.committedTo || null, winterMove: d.winterMove || null, lastStature: d.lastStature || 0,
       challenge: d.challengeKey ? dailyChallenge(d.challengeKey) : null,
+      legendClubId: d.legendClubId || null,
     };
     // sanear
     if (!G.club) return null;
@@ -251,6 +305,18 @@ function deserializeQueue(q) {
     if (b.t === 'story') return { t: 'story', arcId: b.arcId };
     return b;
   }).filter((b) => b.t === 'preseason' || b.ev || b.m || b.arcId);
+}
+
+/* ---------- Ajustes ---------- */
+const DEFAULT_SETTINGS = { hints: 'subtle', pace: 'normal' };
+function getSettings() {
+  const m = loadMeta();
+  return { ...DEFAULT_SETTINGS, ...(m.settings || {}) };
+}
+function setSetting(k, v) {
+  const m = loadMeta();
+  m.settings = { ...DEFAULT_SETTINGS, ...(m.settings || {}), [k]: v };
+  saveMeta(m);
 }
 
 /* ---------- Meta persistente (sala de leyendas) ---------- */

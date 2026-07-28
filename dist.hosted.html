@@ -70,6 +70,37 @@ a { color: var(--acc); }
 
 #app { max-width: 1120px; margin: 0 auto; padding: 16px 14px calc(90px + env(safe-area-inset-bottom)); }
 
+/* ---------- Detalles visuales ----------
+   Pequeños toques que hacen que el juego respire: el número de la media late
+   cuando cambia, las tarjetas entran escalonadas y los títulos brillan. */
+@keyframes bump { 0% { transform: scale(1) } 40% { transform: scale(1.18) } 100% { transform: scale(1) } }
+.ovr b.bump { animation: bump .55s cubic-bezier(.2,.9,.3,1.3); display: inline-block; }
+
+@keyframes cardIn { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+#app > .card { animation: cardIn .3s cubic-bezier(.2,.9,.3,1) both; }
+#app > .card:nth-child(2) { animation-delay: .03s }
+#app > .card:nth-child(3) { animation-delay: .06s }
+#app > .card:nth-child(4) { animation-delay: .09s }
+#app > .card:nth-child(5) { animation-delay: .12s }
+
+/* Trofeos con un brillo que recorre la tarjeta */
+.trophy { position: relative; overflow: hidden; }
+.trophy::after {
+  content: ''; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,201,60,.16), transparent);
+  animation: shine 4.5s ease-in-out infinite;
+}
+@keyframes shine { 0%, 70% { left: -60% } 100% { left: 120% } }
+
+/* La barra de un momento clave con probabilidad alta se nota */
+.opt .prob { font-variant-numeric: tabular-nums; }
+
+/* Encabezado de sección con línea, para separar bloques largos */
+.sechead {
+  display: flex; align-items: center; gap: 10px; margin: 2px 0 10px;
+}
+.sechead::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
 /* ---------- Utilidades ---------- */
 .row { display: flex; gap: 10px; align-items: center; }
 .row.wrap { flex-wrap: wrap; }
@@ -277,6 +308,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   animation: rise .26s cubic-bezier(.2,.9,.3,1.1) both;
 }
 @keyframes rise { from { opacity: 0; transform: translateY(18px) scale(.97) } to { opacity: 1; transform: none } }
+
+/* Pista en lenguaje natural bajo cada opción */
+.hint {
+  display: block; font-size: 12.5px; color: var(--dim2); font-style: italic;
+  margin-top: 2px; line-height: 1.4;
+}
 
 /* ---------- Peso de la decisión ----------
    Una decisión que te ata a un club durante años no puede parecerse a elegir
@@ -2407,6 +2444,78 @@ const EVENTS = [
     { l: 'Adaptarme y callar', d: '', e: { injuryRisk: 1.12, trust: 5 } },
   ],
 },
+
+{
+  id: 'legend_temptation', cat: 'Club', w: 9, when: (G) => G.legendClubId && mainClub(G.club).id === G.legendClubId && P(G).ovr >= 76,
+  title: 'La llamada que no querías',
+  text: (G) => `Un club muy superior al tuyo pregunta por ti. Sueldo triple, Champions, escaparate mundial. Y tú llevas desde los seis años yendo a este campo.`,
+  opts: [
+    { l: 'Ni escuchar la oferta', d: 'Aquí naciste y aquí te quedas.',
+      e: { fanLove: 20, trust: 12, morale: 10, legacyBonus: 70, trait: 'loyal' } },
+    { l: 'Escucharla y decidir en verano', d: 'Se filtra y la grada se entera.', tags: ['Fuerzas tu salida'],
+      e: { flag: 'wantOut', fanLove: -18, morale: 5 } },
+    { l: 'Usarla para pedir mejor contrato', d: '', e: (G) => chance(0.6)
+      ? { wageCut: 1.5, fanLove: -4, note: 'Cuela: te mejoran la ficha para retenerte.' }
+      : { fanLove: -12, trust: -8, note: 'Les sienta fatal el órdago.' } },
+  ],
+},
+{
+  id: 'shirt_retired', cat: 'Club', w: 4, when: (G) => P(G).age >= 33 && P(G).fanLove >= 80,
+  title: 'Van a retirar tu dorsal',
+  text: (G) => `El club anuncia que nadie más volverá a llevar tu número. Ni siquiera te has retirado todavía.`,
+  opts: [
+    { l: 'Aceptar el homenaje', d: '', e: { fanLove: 12, rep: 8, morale: 14, legacyBonus: 90 } },
+    { l: 'Pedir que esperen a que me retire', d: 'Todavía queda fútbol.', e: { morale: 8, form: 8, legacyBonus: 40 } },
+  ],
+},
+{
+  id: 'mentor_coach', cat: 'Entrenador', w: 6, when: (G) => P(G).age >= 22 && P(G).age <= 30,
+  title: 'Un entrenador que te cambia',
+  text: () => `Llega un técnico que en tres semanas te hace entender el juego de otra manera. Nunca nadie te había explicado así lo que hay que hacer sin balón.`,
+  opts: [
+    { l: 'Absorber todo lo que pueda', d: '', e: { attr: { men: 4, pos: 3 }, growth: 1.14, sp: 1 } },
+    { l: 'Pedirle sesiones de vídeo a solas', d: '', e: { attr: { men: 3 }, trust: 10, growth: 1.08, fitness: -3 } },
+  ],
+},
+{
+  id: 'crowd_favourite', cat: 'Afición', w: 6, when: (G) => P(G).fanLove >= 70,
+  title: 'Tu cántico',
+  text: (G) => `El fondo se ha inventado un cántico con tu nombre. Lo cantan desde el minuto uno, ganes o pierdas.`,
+  opts: [
+    { l: 'Devolvérselo cada partido', d: '', e: { fanLove: 10, form: 8, morale: 10 } },
+    { l: 'Grabarlo y mandárselo a mi familia', d: '', e: { morale: 14, attr: { men: 1 } } },
+  ],
+},
+{
+  id: 'contract_rebel', cat: 'Club', w: 6, when: (G) => P(G).contract <= 1 && P(G).ovr >= 74,
+  title: 'Último año de contrato',
+  text: () => `Te queda un año. Tu representante quiere que llegues libre para llevarte una prima enorme. El club quiere venderte ya para no perderte gratis.`,
+  opts: [
+    { l: 'Aguantar hasta quedar libre', d: 'Máximo dinero, máximo desgaste.', tags: ['Te compromete'],
+      e: (G) => { P(G).contract = 1; return { money: 2, trust: -18, fanLove: -14, mins: 0.9, note: 'El club te va a tener en el banquillo hasta que acabe.' }; } },
+    { l: 'Renovar y quedarme', d: '', e: (G) => { P(G).contract += 3; return { trust: 12, fanLove: 10, morale: 6 }; } },
+    { l: 'Pedir que me vendan ahora', d: '', tags: ['Fuerzas tu salida'], e: { flag: 'wantOut', trust: -6 } },
+  ],
+},
+{
+  id: 'world_cup_year', cat: 'Selección', w: 7, when: (G) => P(G).nt.caps > 0 && P(G).age >= 21,
+  title: 'Año de Mundial',
+  text: () => `Es el año. Ir al Mundial depende de llegar en forma y de que el seleccionador te vea. Y quedan seis meses.`,
+  opts: [
+    { l: 'Todo por llegar a la lista', d: 'Aunque te cueste la temporada de club.', e: { form: 12, fitness: -8, injuryRisk: 1.2, rep: 5 } },
+    { l: 'Centrarme en mi club y que sea lo que sea', d: '', e: { trust: 10, rating: 0.05, growth: 1.05 } },
+    { l: 'Cuidarme para llegar entero al verano', d: '', e: { mins: 0.9, injuryRisk: 0.75, fitness: 10 } },
+  ],
+},
+{
+  id: 'academy_visit', cat: 'Carrera', w: 5, when: (G) => P(G).age >= 26,
+  title: 'Vuelta a la cantera',
+  text: (G) => `Te invitan a hablar con los chavales del filial. Te sientas donde te sentabas tú y ves treinta caras esperando que digas algo que les sirva.`,
+  opts: [
+    { l: 'Contarles la verdad, sin épica', d: '', e: { morale: 10, fanLove: 6, attr: { men: 2 }, legacyBonus: 30 } },
+    { l: 'Motivarles a lo grande', d: '', e: { morale: 6, rep: 4, fanLove: 5 } },
+  ],
+},
 ];
 
 /* ============================================================
@@ -2800,6 +2909,59 @@ const MOMENTS = [
     { l: 'Administrarme y leer el partido', a: ['men', 'pas', 'pos'], base: 0.72,
       win: { text: 'Sin correr, lo controlas todo. Clase pura.', e: { rating: 0.08, trust: 8, form: 8 } },
       lose: { text: 'Te pasa el partido por encima.', e: { rating: -0.06, form: -6 } } },
+  ],
+},
+
+{
+  id: 'bench_impact', when: (G) => squadRole(G.player, G.club, competitorGap(G)).min < 0.55,
+  title: 'Sales en el 70',
+  text: () => `Vais perdiendo y el míster te llama para los últimos veinte minutos. Es la ventana que llevas meses esperando.`,
+  opts: [
+    { l: 'Buscar el gol desde el primer balón', a: ['sho', 'pac'], base: 0.34,
+      win: { text: 'Entras y marcas a los cuatro minutos. El míster no te va a poder sentar la semana que viene.', e: { extraGoals: 1, mins: 1.18, trust: 14, form: 14 } },
+      lose: { text: 'Te precipitas en todo y pasas sin pena ni gloria.', e: { trust: -6 } } },
+    { l: 'Jugar sencillo y ordenar al equipo', a: ['pas', 'men'], base: 0.6,
+      win: { text: 'Ordenas el ataque y acabáis empatando. El míster toma nota.', e: { trust: 12, mins: 1.1, rating: 0.05 } },
+      lose: { text: 'Veinte minutos intrascendentes.', e: {} } },
+  ],
+},
+{
+  id: 'captain_moment', when: (G) => G.player.traits.includes('leader') || G.player.age >= 28,
+  title: 'El brazalete pesa',
+  text: () => `Un compañero se derrumba en el vestuario a media temporada. Todos te miran a ti.`,
+  opts: [
+    { l: 'Parar todo y hablar con él', a: ['men'], base: 0.72,
+      win: { text: 'Le levantas y el vestuario entero se une. Vuelve a ser el de antes.', e: { trust: 12, morale: 10, form: 8, legacyBonus: 25 } },
+      lose: { text: 'No encuentras las palabras. Se va del club en enero.', e: { morale: -8 } } },
+    { l: 'Dejarle espacio', a: ['men'], base: 0.5,
+      win: { text: 'Necesitaba aire. Vuelve solo.', e: { morale: 4 } },
+      lose: { text: 'Se hunde más y arrastra al grupo.', e: { form: -8, morale: -6 } } },
+  ],
+},
+{
+  id: 'weather_game',
+  title: 'Campo impracticable',
+  text: () => `Diluvia. El balón no rueda, el campo es un barrizal y el árbitro decide que se juega igual.`,
+  opts: [
+    { l: 'Adaptarme: pelotazos y segundas jugadas', a: ['phy', 'men'], base: 0.6,
+      win: { text: 'Te sale un partido de guerrero y sacáis los tres puntos.', e: { form: 10, trust: 8 } },
+      lose: { text: 'Te comen físicamente. Partido para olvidar.', e: { rating: -0.06 } } },
+    { l: 'Insistir en jugar al fútbol', a: ['dri', 'pas'], base: 0.35,
+      win: { text: 'En medio del barro, sacas la jugada del año.', e: { extraGoals: 1, rep: 6, form: 12 } },
+      lose: { text: 'Pierdes cinco balones en tu campo. El míster está rojo.', e: { trust: -10, rating: -0.08 } } },
+  ],
+},
+{
+  id: 'legend_return', when: (G) => G.legendClubId && mainClub(G.club).id !== G.legendClubId,
+  title: 'Vuelves a tu casa como rival',
+  text: (G) => `Se juega en el campo donde te hiciste futbolista, y esta vez estás en el equipo de enfrente.`,
+  opts: [
+    { l: 'Pedir no celebrar si marco', a: ['men'], base: 0.8,
+      win: { text: 'Marcas, no lo celebras y el estadio entero se pone en pie a aplaudirte.', e: { extraGoals: 1, fanLove: 14, rep: 8, morale: 10 } },
+      lose: { text: 'No hay gol que celebrar. Te vas con una sensación rara.', e: { morale: -6 } } },
+    { l: 'Ir a por todas, sin sentimentalismos', a: ['sho', 'men'], base: 0.45,
+      win: { text: 'Les endosas dos. Profesional por encima de todo.', e: { extraGoals: 1, form: 12, fanLove: -6 } },
+      lose: { text: 'Ni juegas bien ni te lo perdonan.', e: { form: -8, fanLove: -8 } } },
   ],
 },
 ];
@@ -5078,12 +5240,19 @@ function ovrSparkline(history, w, h) {
 const APP = () => document.getElementById('app');
 const ACTIONS = {};
 
+/* Algunas acciones (repartir puntos, elegir país…) repintan la pantalla entera.
+   Si en esos casos saltamos arriba, se pierde el sitio y es insufrible en móvil.
+   keepScrollOnce() marca el siguiente repintado como "no me muevas". */
+let KEEP_SCROLL = false;
+function keepScrollOnce() { KEEP_SCROLL = true; }
 function screen(html) {
   const app = APP();
+  const keep = KEEP_SCROLL; KEEP_SCROLL = false;
+  const y = keep ? (window.scrollY || window.pageYOffset || 0) : 0;
   app.innerHTML = html;
-  app.scrollTop = 0;
-  window.scrollTo(0, 0);
   bind(app);
+  if (keep) window.scrollTo(0, y);
+  else { app.scrollTop = 0; window.scrollTo(0, 0); }
 }
 function bind(root) {
   root.querySelectorAll('[data-act]').forEach((n) => {
@@ -5239,9 +5408,54 @@ const FX_LABEL = {
   form: 'Racha', rating: 'Rendimiento', sp: 'Puntos de evolución', extraGoals: 'Gol asegurado',
 };
 const FX_MULT = ['growth', 'mins', 'goals', 'assists', 'injuryRisk'];
+
+/* Pistas en lenguaje natural, sin números ni nombres de estadística: se intuye
+   por dónde va la cosa, pero hay que pensarlo. Es lo que hace que decidir tenga
+   mérito en vez de ser leer una tabla. */
+const HINT_RULES = [
+  { k: 'growth', up: 'te va a hacer mejor jugador', dn: 'vas a estancarte' },
+  { k: 'injuryRisk', up: 'tu cuerpo lo va a pagar', dn: 'vas a llegar más entero' },
+  { k: 'mins', up: 'deberías jugar más', dn: 'vas a perder minutos' },
+  { k: 'goals', up: 'deberías ver más puerta', dn: 'vas a marcar menos' },
+  { k: 'assists', up: 'vas a asistir más', dn: 'vas a asistir menos' },
+  { k: 'trust', up: 'al míster le va a gustar', dn: 'al míster no le va a hacer gracia' },
+  { k: 'fanLove', up: 'la grada lo va a agradecer', dn: 'la grada no te lo va a perdonar' },
+  { k: 'rep', up: 'vas a salir en todas partes', dn: 'te vas a apagar mediáticamente' },
+  { k: 'morale', up: 'vas a estar bien contigo mismo', dn: 'te vas a quedar tocado' },
+  { k: 'fitness', up: 'vas a llegar fino', dn: 'vas a acusar el desgaste' },
+  { k: 'money', up: 'entra dinero', dn: 'sale dinero' },
+  { k: 'form', up: 'vas a entrar en racha', dn: 'vas a entrar frío' },
+  { k: 'rating', up: 'deberías rendir mejor', dn: 'te va a costar rendir' },
+];
+function hintPhrase(o) {
+  const e = typeof o.e === 'function' ? null : o.e;
+  if (!e) return 'No sabes cómo va a salir.';
+  const bits = [];
+  HINT_RULES.forEach((r) => {
+    const v = e[r.k];
+    if (v == null) return;
+    const isMult = FX_MULT.indexOf(r.k) >= 0;
+    const up = isMult ? v > 1 : v > 0;
+    const mag = isMult ? Math.abs(v - 1) : Math.abs(v);
+    if (mag < (isMult ? 0.04 : r.k === 'rating' ? 0.03 : r.k === 'money' ? 0.05 : 4)) return;
+    bits.push(up ? r.up : r.dn);
+  });
+  if (e.trait && TRAITS[e.trait]) bits.push('puede dejarte marca para siempre');
+  if (e.attr && Object.keys(e.attr).some((k) => e.attr[k] > 0)) bits.push('vas a pulir algo tuyo');
+  if (!bits.length) return 'No parece que cambie gran cosa.';
+  const shown = bits.slice(0, 2);
+  const t = shown.join(', pero ');
+  return t.charAt(0).toUpperCase() + t.slice(1) + '.';
+}
+
 function effectChips(o) {
+  const level = getSettings().hints;
+  if (level === 'none') return '';
   if (o.tags && o.tags.length) {
     return o.tags.map((t) => chip(t, /compromete|cambias/i.test(t) ? 'bad' : 'warn')).join('');
+  }
+  if (level === 'subtle') {
+    return `<span class="hint">${esc(hintPhrase(o))}</span>`;
   }
   const e = typeof o.e === 'function' ? null : o.e;
   if (!e) return chip('🎲 Puede salir bien o mal', 'warn');
@@ -5286,6 +5500,7 @@ function saveGame(G) {
       squad: G.squad, squadClubId: G.squadClubId,
       committedTo: G.committedTo, winterMove: G.winterMove, lastStature: G.lastStature,
       challengeKey: G.challenge ? G.challenge.key : null,
+      legendClubId: G.legendClubId || null,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
@@ -5308,6 +5523,7 @@ function loadGame() {
       squad: d.squad || null, squadClubId: d.squadClubId || null,
       committedTo: d.committedTo || null, winterMove: d.winterMove || null, lastStature: d.lastStature || 0,
       challenge: d.challengeKey ? dailyChallenge(d.challengeKey) : null,
+      legendClubId: d.legendClubId || null,
     };
     // sanear
     if (!G.club) return null;
@@ -5326,6 +5542,18 @@ function deserializeQueue(q) {
   }).filter((b) => b.t === 'preseason' || b.ev || b.m || b.arcId);
 }
 
+/* ---------- Ajustes ---------- */
+const DEFAULT_SETTINGS = { hints: 'subtle', pace: 'normal' };
+function getSettings() {
+  const m = loadMeta();
+  return { ...DEFAULT_SETTINGS, ...(m.settings || {}) };
+}
+function setSetting(k, v) {
+  const m = loadMeta();
+  m.settings = { ...DEFAULT_SETTINGS, ...(m.settings || {}), [k]: v };
+  saveMeta(m);
+}
+
 /* ---------- Meta persistente (sala de leyendas) ---------- */
 function loadMeta() {
   try { return JSON.parse(localStorage.getItem(META_KEY)) || { hall: [], best: 0, careers: 0 }; }
@@ -5340,6 +5568,7 @@ function saveMeta(m) { try { localStorage.setItem(META_KEY, JSON.stringify(m)); 
    ============================================================ */
 
 const NEW = { country: null, pos: null, arch: null, perk: 'none', challenge: null,
+  legendMode: false, legendClub: null, clubFilter: '',
   firstName: '', lastName: '', shirtName: '', number: 10, foot: 'Derecho', filter: '' };
 const START_YEAR = 2025;
 
@@ -5373,6 +5602,7 @@ function screenHome() {
       ${cont ? `<button class="btn primary wide" data-act="continue">▶️ Continuar carrera</button>` : ''}
       <button class="btn ${cont ? '' : 'primary'} wide" data-act="newCareer">${cont ? '🔁 Empezar una carrera nueva' : '⚽ Empezar mi carrera'}</button>
       <button class="btn wide" data-act="dailyScreen">🎯 Reto del día${todayDone(meta) ? ' · jugado' : ''}</button>
+      <button class="btn wide" data-act="legendScreen">🏛️ Modo Leyenda de club</button>
       ${meta.hall.length ? `<button class="btn ghost wide" data-act="hall">🏛️ Sala de leyendas (${meta.hall.length})</button>` : ''}
       ${perkInfo.total > 0 ? `<button class="btn ghost wide" data-act="perksScreen">🎁 Ventajas (${perkInfo.list.filter((x) => x.unlocked).length - 1} desbloqueadas)</button>` : ''}
     </div>
@@ -5433,9 +5663,64 @@ ACTIONS.startDaily = () => {
   const ch = dailyChallenge(todayKey());
   seedRng(ch.seed);                       // a partir de aquí, todos vivimos lo mismo
   NEW.country = ch.country.code; NEW.pos = ch.pos; NEW.arch = ch.arch;
-  NEW.perk = 'none'; NEW.challenge = ch;
+  NEW.perk = 'none'; NEW.challenge = ch; NEW.legendMode = false; NEW.legendClub = null;
   NEW.firstName = ''; NEW.lastName = ''; NEW.shirtName = ''; NEW.number = 10;
   screenIdentity();
+};
+
+/* ---------- Modo Leyenda de club ----------
+   Eliges el club de tu vida antes de empezar, naces en su cantera y toda la
+   carrera se mide por lo que dejes ahí. El juego te va a tentar con ofertas
+   mejores: resistirse es justo la gracia del modo. */
+ACTIONS.legendScreen = () => {
+  const f = (NEW.clubFilter || '').toLowerCase().trim();
+  const list = CLUBS.filter((c) => LEAGUES[c.league] && (!f
+    || c.name.toLowerCase().includes(f)
+    || LEAGUES[c.league].name.toLowerCase().includes(f)))
+    .sort((a, b) => b.prestige - a.prestige).slice(0, 60);
+  screen(`${brand()}
+  <div class="card">
+    <h2>🏛️ Modo Leyenda de club</h2>
+    <p class="dim small">Elige el club de tu vida. Empiezas en su cantera y tu carrera se juzga por lo que
+    dejes ahí: partidos, goles, títulos y años con esa camiseta. Te van a llover ofertas mejores;
+    quedarte es la mitad del reto.</p>
+    <input class="input mt-s" data-inp="filterClub" placeholder="Buscar club o liga…" value="${esc(NEW.clubFilter || '')}" autocomplete="off">
+    <div class="scroller mt">
+      <div class="grid autowide">
+        ${list.map((c) => `<button class="pick ${NEW.legendClub === c.id ? 'on' : ''}" data-act="pickLegendClub" data-id="${c.id}">
+          ${crestSVG(c, 'crest-md')}
+          <span class="grow" style="min-width:0"><span class="nm" style="display:block">${esc(c.name)}</span>
+          <span class="small dim2">${COUNTRY_BY_CODE[c.country].flag} ${esc(LEAGUES[c.league].name)}</span></span>
+        </button>`).join('')}
+      </div>
+      ${list.length ? '' : '<p class="dim tc mt">Ningún club coincide.</p>'}
+    </div>
+  </div>
+  <div class="actionbar row" style="gap:10px">
+    <button class="btn ghost" data-act="home">Volver</button>
+    <button class="btn primary grow" data-act="startLegend" ${NEW.legendClub ? '' : 'disabled'}>Empezar aquí</button>
+  </div>`);
+};
+ACTIONS.filterClub = (d, n) => {
+  NEW.clubFilter = n.value;
+  const pos = n.selectionStart;
+  keepScrollOnce();
+  ACTIONS.legendScreen();
+  const inp = document.querySelector('[data-inp="filterClub"]');
+  if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch (e) {} }
+};
+ACTIONS.pickLegendClub = (d) => { NEW.legendClub = d.id; keepScrollOnce(); ACTIONS.legendScreen(); };
+ACTIONS.startLegend = () => {
+  if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return;
+  clearSave();
+  const club = getClub(NEW.legendClub);
+  if (!club) return;
+  NEW.challenge = null;
+  NEW.country = club.country;
+  NEW.pos = null; NEW.arch = null; NEW.perk = 'none';
+  NEW.firstName = ''; NEW.lastName = ''; NEW.shirtName = ''; NEW.number = 10;
+  NEW.legendMode = true;
+  screenPosition();
 };
 
 /* ---------- Ventajas desbloqueables ---------- */
@@ -5462,7 +5747,7 @@ ACTIONS.perksScreen = () => {
 function miniCard(ic, t, d) {
   return `<div class="sub"><div style="font-size:20px">${ic}</div><div class="b" style="margin:4px 0 2px">${t}</div><div class="small dim">${d}</div></div>`;
 }
-ACTIONS.newCareer = () => { if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return; clearSave(); NEW.country = null; NEW.pos = null; NEW.arch = null; NEW.challenge = null; NEW.perk = 'none'; screenCountry(); };
+ACTIONS.newCareer = () => { if (hasSave() && !confirm('Esto borrará tu carrera guardada. ¿Seguro?')) return; clearSave(); NEW.country = null; NEW.pos = null; NEW.arch = null; NEW.challenge = null; NEW.perk = 'none'; NEW.legendMode = false; NEW.legendClub = null; screenCountry(); };
 ACTIONS.continue = () => { const G = loadGame(); if (!G) { alert('No se ha podido cargar la partida.'); return; } window.G = G; renderStep(); };
 ACTIONS.home = () => screenHome();
 
@@ -5507,11 +5792,12 @@ function ntDifficultyLabel(tier) {
 ACTIONS.filterCountry = (d, n) => {
   NEW.filter = n.value;
   const pos = n.selectionStart;
+  keepScrollOnce();
   screenCountry();
   const inp = document.querySelector('[data-inp="filterCountry"]');
   if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch (e) {} }
 };
-ACTIONS.pickCountry = (d) => { NEW.country = d.code; screenCountry(); };
+ACTIONS.pickCountry = (d) => { NEW.country = d.code; keepScrollOnce(); screenCountry(); };
 ACTIONS.toPos = () => screenPosition();
 
 /* ---------- Paso 2: posicion ---------- */
@@ -5538,11 +5824,11 @@ function screenPosition() {
       </div>`).join('')}
   </div>
   <div class="actionbar row" style="gap:10px">
-    <button class="btn ghost" data-act="toCountry">Atrás</button>
+    <button class="btn ghost" data-act="${NEW.legendMode ? 'legendScreen' : 'toCountry'}">Atrás</button>
     <button class="btn primary grow" data-act="toArch" ${NEW.pos ? '' : 'disabled'}>Continuar</button>
   </div>`);
 }
-ACTIONS.pickPos = (d) => { NEW.pos = d.key; screenPosition(); };
+ACTIONS.pickPos = (d) => { NEW.pos = d.key; keepScrollOnce(); screenPosition(); };
 ACTIONS.toCountry = () => screenCountry();
 ACTIONS.toArch = () => screenArchetype();
 
@@ -5587,8 +5873,8 @@ function perkSection() {
     </div>
   </div>`;
 }
-ACTIONS.pickPerk = (d) => { NEW.perk = d.key; screenArchetype(); };
-ACTIONS.pickArch = (d) => { NEW.arch = d.key; screenArchetype(); };
+ACTIONS.pickPerk = (d) => { NEW.perk = d.key; keepScrollOnce(); screenArchetype(); };
+ACTIONS.pickArch = (d) => { NEW.arch = d.key; keepScrollOnce(); screenArchetype(); };
 ACTIONS.toIdentity = () => screenIdentity();
 
 /* ---------- Paso 4: nombre, dorsal y equipacion ---------- */
@@ -5637,7 +5923,7 @@ ACTIONS.setFirst = (d, n) => { NEW.firstName = n.value; liveKit(); };
 ACTIONS.setLast = (d, n) => { NEW.lastName = n.value; liveKit(); };
 ACTIONS.setShirt = (d, n) => { NEW.shirtName = n.value; liveKit(); };
 ACTIONS.setNum = (d, n) => { NEW.number = clamp(parseInt(n.value, 10) || 1, 1, 99); liveKit(); };
-ACTIONS.setFoot = (d) => { NEW.foot = d.f; screenIdentity(); };
+ACTIONS.setFoot = (d) => { NEW.foot = d.f; keepScrollOnce(); screenIdentity(); };
 ACTIONS.randomName = () => {
   const nm = randomName(NEW.country).split(' ');
   NEW.firstName = nm[0]; NEW.lastName = nm.slice(1).join(' '); NEW.shirtName = '';
@@ -5660,7 +5946,21 @@ ACTIONS.createChar = () => {
     challenge: NEW.challenge || null,
   };
   computeEuroSpots(G);
-  G.startOptions = applyTwist(G, startingOptions(G));
+  if (NEW.legendMode && NEW.legendClub) {
+    const club = getClub(NEW.legendClub);
+    G.legendClubId = club.id;
+    const useAcademy = club.str >= 60;
+    G.startOptions = [{
+      kind: useAcademy ? 'academy' : 'first',
+      club: useAcademy ? academyOf(club) : club, parent: useAcademy ? club : null,
+      title: (useAcademy ? 'Cantera del ' : '') + club.name,
+      desc: 'El club de tu vida. Aquí empieza y, si aguantas las tentaciones, aquí acaba.',
+      pros: ['Es tu casa', 'Toda la afición contigo'], cons: ['Vas a tener ofertas mejores'],
+      dev: useAcademy ? 1.12 : 1.0, minsMod: useAcademy ? 0.8 : 1.1,
+    }];
+  } else {
+    G.startOptions = applyTwist(G, startingOptions(G));
+  }
   screenStart();
 };
 
@@ -5771,6 +6071,7 @@ function startSeason(G, first) {
   G.objectives = makeObjectives(G);
   G.seasonFeed = [];
   G.queue = buildQueue(G, first);
+  G.queueTotal = G.queue.length;
   G.step = 'beat';
   saveGame(G);
   renderStep();
@@ -5788,7 +6089,8 @@ function buildQueue(G, first) {
     const last = p.usedEvents[e.id];
     return last == null || season - last >= 5;
   });
-  const nEv = first ? 2 : ri(2, 4);
+  const fast = getSettings().pace === 'rapido';
+  const nEv = first ? (fast ? 1 : 2) : (fast ? ri(0, 2) : ri(2, 4));
   const chosen = [];
   for (let i = 0; i < nEv && pool.length; i++) {
     const e = pickW(pool.filter((x) => !chosen.includes(x)), (x) => x.w || 5);
@@ -5799,7 +6101,7 @@ function buildQueue(G, first) {
 
   /* momentos clave */
   const mpool = MOMENTS.filter((m) => !m.when || m.when(G));
-  const nMo = first ? 1 : ri(1, 2);
+  const nMo = first ? 1 : (fast ? (chance(0.55) ? 1 : 0) : ri(1, 2));
   const moms = [];
   for (let i = 0; i < nMo && mpool.length; i++) {
     const m = pick(mpool.filter((x) => !moms.includes(x)) || mpool);
@@ -5837,16 +6139,59 @@ function topbar(G) {
       <button class="btn sm ghost" data-act="profile">📋 Perfil</button>
       <button class="btn sm ghost" data-act="menu">⋯</button>
     </div>
+  </div>
+  ${seasonProgress(G)}`;
+}
+/* Barra de progreso de la temporada: cuántas decisiones quedan antes de jugar */
+function seasonProgress(G) {
+  if (G.step !== 'beat' || !G.queue) return '';
+  const total = (G.queueTotal || G.queue.length) || 1;
+  const done = total - G.queue.length;
+  return `<div class="row" style="gap:5px;margin:-6px 0 10px">
+    ${Array.from({ length: total }, (_, i) => `<div style="flex:1;height:3px;border-radius:3px;background:${i < done ? 'var(--acc)' : '#1b2836'}"></div>`).join('')}
   </div>`;
 }
+
 ACTIONS.menu = () => {
   modal(`<h3>Menú</h3>
     <div class="col mt">
       <button class="btn wide" data-act="closeModal">Seguir jugando</button>
+      <button class="btn wide" data-act="settings">⚙️ Ajustes de partida</button>
       <button class="btn ghost wide" data-act="saveNow">💾 Guardar ahora</button>
       <button class="btn danger wide" data-act="abandon">Abandonar carrera</button>
     </div>
     <p class="small dim2 mt">La partida se guarda sola en este navegador al final de cada paso.</p>`);
+};
+
+/* ---------- Ajustes: cuánta ayuda quieres y a qué ritmo juegas ---------- */
+const HINT_OPTS = [
+  ['full', 'Completas', 'Te digo exactamente qué sube y qué baja. Cómodo, pero se decide solo.'],
+  ['subtle', 'Sutiles', 'Una frase que insinúa por dónde va. Hay que pensar. Recomendado.'],
+  ['none', 'Ninguna', 'A ciegas, como en la vida. Solo el texto de la situación.'],
+];
+const PACE_OPTS = [
+  ['normal', 'Completo', 'Todas las decisiones y tú repartes los puntos de entrenamiento.'],
+  ['rapido', 'Exprés', 'Menos situaciones por temporada y los puntos se reparten solos. Para carreras rápidas.'],
+];
+ACTIONS.settings = () => {
+  const st = getSettings();
+  const w = modal(`<div class="row between" style="margin-bottom:6px">
+      <h3>⚙️ Ajustes</h3><button class="btn sm ghost" data-act="closeModal">✕</button></div>
+    <div class="tiny mt">Pistas en las decisiones</div>
+    <div class="col mt-s">
+      ${HINT_OPTS.map(([k, n, d]) => `<button class="opt ${st.hints === k ? 'on' : ''}" data-act="setHints" data-k="${k}"
+        style="${st.hints === k ? 'border-color:var(--acc);background:#0f2419' : ''}">
+        <div class="t">${n}</div><div class="d">${d}</div></button>`).join('')}
+    </div>
+    <div class="tiny mt">Ritmo de juego</div>
+    <div class="col mt-s">
+      ${PACE_OPTS.map(([k, n, d]) => `<button class="opt ${st.pace === k ? 'on' : ''}" data-act="setPace" data-k="${k}"
+        style="${st.pace === k ? 'border-color:var(--acc);background:#0f2419' : ''}">
+        <div class="t">${n}</div><div class="d">${d}</div></button>`).join('')}
+    </div>
+    <p class="small dim2 mt">Se aplican a partir de la siguiente temporada y se recuerdan entre partidas.</p>`);
+  ACTIONS.setHints = (d) => { setSetting('hints', d.k); w.remove(); ACTIONS.settings(); };
+  ACTIONS.setPace = (d) => { setSetting('pace', d.k); w.remove(); ACTIONS.settings(); };
 };
 ACTIONS.saveNow = () => { saveGame(window.G); closeModals(); toast('Partida guardada'); };
 ACTIONS.abandon = () => { if (confirm('¿Abandonar esta carrera? Se borrará el guardado.')) { clearSave(); closeModals(); window.G = null; screenHome(); } };
@@ -6144,6 +6489,13 @@ function runSimulation() {
   G.lastTables = {};
   if (rep.league && rep.table) G.lastTables[leagueOfClub(G, rep.club)] = rep.table;
 
+  /* lo que has hecho con la camiseta de cada club */
+  p.clubStats = p.clubStats || {};
+  const mc = mainClub(rep.club);
+  const cs = p.clubStats[mc.id] = p.clubStats[mc.id] || { name: mc.name, apps: 0, goals: 0, assists: 0, titles: 0, seasons: 0 };
+  cs.apps += s.apps; cs.goals += s.goals; cs.assists += s.assists;
+  cs.titles += rep.titles.length; cs.seasons++;
+
   /* hitos, récords y destacados: hacen que la temporada se sienta como un capítulo */
   rep.milestones = checkMilestones(G);
   rep.broken = brokenRecords(G, rep);      // antes de actualizar, para saber qué se ha batido
@@ -6231,7 +6583,28 @@ function screenReport() {
     <button class="btn primary wide" data-act="toDevelop">Ver mi evolución →</button>
   </div>`);
 }
-ACTIONS.toDevelop = () => { window.G.step = 'develop'; saveGame(window.G); renderStep(); };
+ACTIONS.toDevelop = () => {
+  const G = window.G;
+  if (getSettings().pace === 'rapido' && G.player.sp > 0) autoSpend(G);
+  G.step = 'develop'; saveGame(G); renderStep();
+};
+/* Reparto automático: los puntos van a lo que más pesa en tu posición, con algo
+   de variedad para no clavar siempre el mismo atributo. */
+function autoSpend(G) {
+  const p = G.player;
+  const w = WEIGHTS[p.pos];
+  const list = attrsFor(p.pos);
+  let spent = 0;
+  while (p.sp > 0 && spent < 40) {
+    const a = pickW(list.filter((x) => p.attrs[x.key] < 99), (x) => Math.pow(w[x.key] || 0.03, 1.4));
+    if (!a) break;
+    p.attrs[a.key] = clamp(p.attrs[a.key] + 1, 20, 99);
+    p.sp--; spent++;
+  }
+  p.ovr = computeOvr(p); p.value = playerValue(p);
+  p.peakOvr = Math.max(p.peakOvr || 0, p.ovr);
+  G.autoSpent = spent;
+}
 
 function buildTableView(rep) {
   if (!rep.table || !rep.table.length) return '';
@@ -6258,9 +6631,11 @@ function buildTableView(rep) {
 /* ---------- Evolución ---------- */
 function screenDevelop() {
   const G = window.G, p = G.player;
+  const autoNote = G.autoSpent; G.autoSpent = 0;
   const dev = G.lastReport.dev;
   const list = attrsFor(p.pos);
   const arrow = dev.delta > 0 ? `<span class="acc">▲ +${dev.delta}</span>` : dev.delta < 0 ? `<span class="red">▼ ${dev.delta}</span>` : '<span class="dim">= 0</span>';
+  const bump = dev.delta !== 0 ? 'bump' : '';
   screen(`${topbar(G)}
   <div class="card">
     <div class="tiny">Final de temporada</div>
@@ -6269,7 +6644,7 @@ function screenDevelop() {
       <div class="row" style="gap:14px">
         <div class="ovr" style="opacity:.6"><b>${dev.before}</b><span class="tiny">ANTES</span></div>
         <div style="font-size:22px;align-self:center">→</div>
-        <div class="ovr ${ovrTier(p.ovr)}"><b>${p.ovr}</b><span class="tiny">AHORA</span></div>
+        <div class="ovr ${ovrTier(p.ovr)}"><b class="${bump}">${p.ovr}</b><span class="tiny">AHORA</span></div>
       </div>
       <div style="text-align:right">
         <div class="b" style="font-size:17px">${arrow}</div>
@@ -6283,6 +6658,11 @@ function screenDevelop() {
     </div>` : ''}
   </div>
 
+  ${autoNote ? `<div class="card" style="border-color:#2b4a63">
+    <div class="row" style="gap:9px"><span style="font-size:19px">⚡</span>
+    <div><div class="b small">Ritmo exprés</div>
+    <div class="small dim2">Se han repartido ${autoNote} puntos automáticamente según tu posición.</div></div></div>
+  </div>` : ''}
   <div class="card">
     <div class="row between">
       <div><div class="tiny">Entrenamiento</div><h3 style="margin-top:3px">Reparte tus puntos</h3></div>
@@ -6323,7 +6703,7 @@ ACTIONS.spend = (d) => {
   p.attrs[d.k] = clamp(p.attrs[d.k] + 1, 20, 99);
   p.sp--; p.ovr = computeOvr(p); p.value = playerValue(p);
   p.peakOvr = Math.max(p.peakOvr || 0, p.ovr);
-  saveGame(G); renderStep();
+  saveGame(G); keepScrollOnce(); renderStep();
 };
 ACTIONS.toMarket = () => {
   const G = window.G;
@@ -6526,6 +6906,8 @@ function screenRetired() {
     ${ovrSparkline(p.history, 340, 92)}
   </div>` : ''}
 
+  ${clubLegendCard(G)}
+
   ${p.records && Object.keys(p.records).length ? `<div class="card">
     <div class="tiny">Récords personales</div>
     <div class="col mt-s" style="gap:6px">
@@ -6553,6 +6935,31 @@ function screenRetired() {
     ${ch ? '<button class="btn wide" data-act="dailyScreen">🎯 Volver a intentar el reto</button>' : ''}
     <button class="btn ghost wide" data-act="hall">🏛️ Sala de leyendas</button>
   </div>`);
+}
+
+/* Dónde has dejado más huella: el club donde más has jugado manda */
+function clubLegendCard(G) {
+  const p = G.player;
+  const all = Object.values(p.clubStats || {});
+  if (!all.length) return '';
+  const target = G.legendClubId && p.clubStats[G.legendClubId] ? p.clubStats[G.legendClubId] : null;
+  const home = target || all.slice().sort((a, b) => b.apps - a.apps)[0];
+  if (!home || home.apps < 20) return '';
+  const score = home.apps * 0.9 + home.goals * 2.4 + home.assists * 1.2 + home.titles * 28 + home.seasons * 8;
+  const tier = score >= 900 ? ['LEYENDA ETERNA', 'Tu nombre está en la fachada del estadio.', 'gold']
+    : score >= 520 ? ['ÍDOLO', 'Los niños de la ciudad llevan tu dorsal.', 'gold']
+      : score >= 280 ? ['UNO DE LOS NUESTROS', 'Aquí siempre vas a tener tu sitio.', 'acc']
+        : ['SE TE RECUERDA', 'Diste lo que pudiste con esta camiseta.', 'blue'];
+  return `<div class="card">
+    <div class="tiny">${target ? '🏛️ Modo Leyenda · tu club' : 'El club de tu vida'}</div>
+    <h3 style="margin:4px 0 2px">${esc(home.name)}</h3>
+    <div class="b ${tier[2]}" style="font-size:17px;letter-spacing:.03em">${tier[0]}</div>
+    <div class="small dim">${tier[1]}</div>
+    <div class="stats mt-s">
+      ${stat(home.seasons, 'Temporadas')}${stat(home.apps, 'Partidos')}
+      ${stat(home.goals, 'Goles')}${stat(home.titles, 'Títulos')}
+    </div>
+  </div>`;
 }
 
 function careerTable(p) {
